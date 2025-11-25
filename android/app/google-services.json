@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "612441661800",
+    "project_id": "swiftspeak",
+    "storage_bucket": "swiftspeak.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:612441661800:android:8ac20429b9aabe8cbbb6dd",
+        "android_client_info": {
+          "package_name": "com.example.swift_speak"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "612441661800-q2rhdr62hc1vnpbjcrk4uns4sj0uoale.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.swift_speak",
+            "certificate_hash": "287e312d3abc2d8e34f3287366df49fd83e3bcff"
+          }
+        },
+        {
+          "client_id": "612441661800-lcartdjbqcs86uuum3ls65mj0igarj0q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAmMjbgkOaq0I4-B9bAs0jTu8m_8_MWq3w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "612441661800-lcartdjbqcs86uuum3ls65mj0igarj0q.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
