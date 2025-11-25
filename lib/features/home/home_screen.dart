@@ -107,15 +107,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     debugPrint("Calling FlutterOverlayWindow.showOverlay");
+    
+    // Calculate center position for initial placement
+    // Assuming collapsed size is roughly 50x100
+    final screenSize = MediaQuery.of(context).size;
+    final int startX = (screenSize.width - 50) ~/ 2;
+    final int startY = (screenSize.height - 100) ~/ 2;
+
     await FlutterOverlayWindow.showOverlay(
       enableDrag: true, // Enable drag
       overlayTitle: "Swift Speak",
       overlayContent: "Swift Speak Overlay",
       flag: OverlayFlag.defaultFlag,
       visibility: NotificationVisibility.visibilityPublic,
-      alignment: OverlayAlignment.center, // Center the overlay
+      alignment: OverlayAlignment.topLeft, // Use TopLeft to match clamping logic
+      positionGravity: PositionGravity.none, // Disable auto positioning
       height: 200, // Make it bigger
       width: 200,
+      startX: startX,
+      startY: startY,
     );
     debugPrint("FlutterOverlayWindow.showOverlay called");
   }

@@ -36,11 +36,34 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
     _audioRecorder = AudioRecorder();
 
     // Listen to data shared from the main app
+    // Listen to data shared from the main app
     FlutterOverlayWindow.overlayListener.listen((event) {
       if (event is bool) {
-        setState(() {
-          _isInputActive = event;
-        });
+        if (event) {
+          // Input Active: Auto Expand first
+          setState(() {
+            _isExpanded = true;
+            // Resize immediately for expansion
+            FlutterOverlayWindow.resizeOverlay(220, 70, true);
+          });
+          
+          // Delay beam activation until expansion finishes (250ms)
+          Future.delayed(const Duration(milliseconds: 250), () {
+            if (mounted) {
+              setState(() {
+                _isInputActive = true;
+              });
+            }
+          });
+        } else {
+          // Input Inactive: Collapse and hide beam
+          setState(() {
+            _isInputActive = false;
+            _isExpanded = false;
+            // Resize back to collapsed state
+            FlutterOverlayWindow.resizeOverlay(70, 120, true);
+          });
+        }
       }
     });
   }
@@ -163,7 +186,7 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
               ),
             // Main Container
             AnimatedContainer(
-              duration: const Duration(milliseconds: 600), // Adjusted to 600ms
+              duration: const Duration(milliseconds: 250), // Faster animation
               curve: Curves.easeInOut,
               width: _isExpanded ? 200 : 50, // Reduced width
               height: _isExpanded ? 60 : 100,

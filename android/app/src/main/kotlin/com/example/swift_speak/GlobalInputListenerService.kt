@@ -5,6 +5,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.content.Intent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.util.Log
+import android.view.accessibility.AccessibilityWindowInfo
 
 class GlobalInputListenerService : AccessibilityService() {
     private var lastInputState = false
@@ -17,21 +18,50 @@ class GlobalInputListenerService : AccessibilityService() {
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
             var isInputActive = false
-            val source = event.source
             
-            if (source != null) {
-                // Try to find the view that currently has input focus
-                val focused = source.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                if (focused != null) {
-                    isInputActive = focused.isEditable
-                    focused.recycle()
-                } else {
-                    // Fallback: if this event is view focused, check the source itself
+            // 1. Check if any window is an Input Method (Keyboard)
+            // This requires flagRetrieveInteractiveWindows in config
+            val windows = windows
+            if (windows != null) {
+                for (window in windows) {
+                    if (window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                        isInputActive = true
+                        break
+                    }
+                }
+            }
+
+            // 2. If keyboard not found, check for focused editable view in ALL interactive windows
+            if (!isInputActive && windows != null) {
+                for (window in windows) {
+                    if (window.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                        val root = window.root
+                        if (root != null) {
+                            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                            if (focused != null) {
+                                if (focused.isEditable) {
+                                    isInputActive = true
+                                    focused.recycle()
+                                    root.recycle()
+                                    break // Found it!
+                                }
+                                focused.recycle()
+                            }
+                            root.recycle()
+                        }
+                    }
+                }
+            }
+            
+            // 3. Last resort fallback (event source)
+            if (!isInputActive) {
+                val source = event.source
+                if (source != null) {
                     if (event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
                         isInputActive = source.isEditable
                     }
+                    source.recycle()
                 }
-                source.recycle()
             }
 
             Log.d("SwiftSpeakAccess", "Input Active: $isInputActive")

@@ -37,7 +37,8 @@ dependencies:
   firebase_core: ^3.0.0
   firebase_auth: ^5.0.0
   google_sign_in: ^6.2.1
-  flutter_overlay_window: ^0.5.0
+  flutter_overlay_window:
+    path: ./packages/flutter_overlay_window
   google_generative_ai: ^0.4.7
   record: ^6.1.2
   path_provider: ^2.1.1
