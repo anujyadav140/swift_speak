@@ -8,9 +8,17 @@ import 'package:swift_speak/features/overlay/overlay_toolbar.dart';
 
 // overlay entry point
 @pragma("vm:entry-point")
-void overlayMain() {
+void overlayMain() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint("Starting Overlay Entry Point");
+  
+  try {
+    await Firebase.initializeApp();
+    debugPrint("Firebase initialized in Overlay");
+  } catch (e) {
+    debugPrint("Firebase init failed in Overlay: $e");
+  }
+
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
     home: OverlayToolbar(),

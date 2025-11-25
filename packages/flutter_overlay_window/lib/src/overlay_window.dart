@@ -170,4 +170,10 @@ class FlutterOverlayWindow {
   static void disposeOverlayListener() {
     _controller.close();
   }
+
+  /// Insert text into the focused input field via Accessibility Service
+  static Future<bool?> insertText(String text) async {
+    final bool? _res = await _channel.invokeMethod('insertText', {'text': text});
+    return _res;
+  }
 }

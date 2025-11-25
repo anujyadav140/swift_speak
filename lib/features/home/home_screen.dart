@@ -88,6 +88,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _requestOverlayPermission();
       return;
     }
+
+    // Check Mic Permission (Critical for Android 14 FGS)
+    final audioRecorder = AudioRecorder();
+    final bool hasMicPermission = await audioRecorder.hasPermission();
+    audioRecorder.dispose();
+    
+    if (!hasMicPermission) {
+      debugPrint("Microphone permission NOT granted. Aborting overlay show to prevent crash.");
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Microphone permission required for overlay.")),
+        );
+      }
+      return;
+    }
     
     if (await FlutterOverlayWindow.isActive()) {
       if (force) {
@@ -165,8 +180,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                const channel = MethodChannel('com.example.swift_speak/settings');
-                await channel.invokeMethod('openAccessibilitySettings');
+                // Request Mic Permission first to prevent crash
+                 try {
+                   final audioRecorder = AudioRecorder();
+                   if (await audioRecorder.hasPermission()) {
+                     const channel = MethodChannel('com.example.swift_speak/settings');
+                     await channel.invokeMethod('openAccessibilitySettings');
+                   } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Please grant Microphone permission first.")),
+                        );
+                     }
+                   }
+                   audioRecorder.dispose();
+                 } catch (e) {
+                   debugPrint("Error requesting mic permission: $e");
+                 }
               },
               child: const Text("Enable Typing Detection (Accessibility)"),
             ),

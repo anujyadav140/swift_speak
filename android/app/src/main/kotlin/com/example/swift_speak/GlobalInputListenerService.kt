@@ -2,10 +2,15 @@ package com.example.swift_speak
 
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
-import android.content.Intent
+import android.view.accessibility.AccessibilityWindowInfo
 import android.view.accessibility.AccessibilityNodeInfo
 import android.util.Log
-import android.view.accessibility.AccessibilityWindowInfo
+import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.os.Build
+import android.os.Bundle
 
 class GlobalInputListenerService : AccessibilityService() {
     private var lastInputState = false
@@ -85,8 +90,137 @@ class GlobalInputListenerService : AccessibilityService() {
         Log.d("SwiftSpeakAccess", "Service Interrupted")
     }
     
+    private val textInjectionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.example.swift_speak.INSERT_TEXT") {
+                val text = intent.getStringExtra("text")
+                if (!text.isNullOrEmpty()) {
+                    injectText(text)
+                }
+            }
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d("SwiftSpeakAccess", "Service Connected")
+        
+        val filter = IntentFilter("com.example.swift_speak.INSERT_TEXT")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(textInjectionReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(textInjectionReceiver, filter)
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(textInjectionReceiver)
+    }
+
+    private fun injectText(text: String) {
+        Log.d("SwiftSpeakAccess", "Attempting to inject text: $text")
+        val root = rootInActiveWindow
+        if (root == null) {
+            Log.e("SwiftSpeakAccess", "rootInActiveWindow is null")
+            return
+        }
+        
+        // Try finding focus first
+        var focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused == null) {
+             Log.d("SwiftSpeakAccess", "No FOCUS_INPUT found, searching for editable node...")
+             // Fallback: BFS to find first editable node
+             focused = findEditableNode(root)
+        }
+        
+        if (focused != null && focused.isEditable) {
+            Log.d("SwiftSpeakAccess", "Found editable node: ${focused.className}")
+            
+            // Smart Insert Strategy (No Clipboard)
+            var currentText = focused.text?.toString() ?: ""
+            val hintText = focused.hintText?.toString()
+            
+            var start = focused.textSelectionStart
+            var end = focused.textSelectionEnd
+            
+            // Fix for "Message" hint text being treated as content
+            var isHint = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                isHint = focused.isShowingHintText
+            }
+            
+            // Fallback: Check if text equals hint text
+            if (!isHint && !hintText.isNullOrEmpty() && currentText == hintText) {
+                isHint = true
+            }
+            
+            // Aggressive Fallback: Explicitly ignore common hint texts like "Message"
+            // This fixes the issue where some apps (like Google Messages) expose "Message" as text but don't set isShowingHintText
+            if (!isHint && (currentText.equals("Message", ignoreCase = true) || 
+                            currentText.equals("Type a message", ignoreCase = true) ||
+                            currentText.equals("Search", ignoreCase = true))) {
+                Log.d("SwiftSpeakAccess", "Detected common hint text: '$currentText'. Treating as empty.")
+                isHint = true
+            }
+
+            if (isHint) {
+                Log.d("SwiftSpeakAccess", "Field is showing hint text. Treating as empty.")
+                currentText = ""
+                start = 0
+                end = 0
+            }
+            
+            var newText = ""
+            var newCursorPos = 0
+            
+            if (start >= 0 && end >= 0 && start <= currentText.length && end <= currentText.length) {
+                // Insert at cursor or replace selection
+                val selectionStart = Math.min(start, end)
+                val selectionEnd = Math.max(start, end)
+                
+                val prefix = currentText.substring(0, selectionStart)
+                val suffix = currentText.substring(selectionEnd)
+                
+                newText = prefix + text + suffix
+                newCursorPos = prefix.length + text.length
+                Log.d("SwiftSpeakAccess", "Inserting at cursor: $selectionStart")
+            } else {
+                // Append to end if no cursor info
+                newText = currentText + text
+                newCursorPos = newText.length
+                Log.d("SwiftSpeakAccess", "Appending to end (no cursor info)")
+            }
+            
+            // Apply new text
+            val arguments = Bundle()
+            arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, newText)
+            val success = focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            Log.d("SwiftSpeakAccess", "SET_TEXT success: $success")
+            
+            // Restore cursor position
+            if (success) {
+                val selectionArgs = Bundle()
+                selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, newCursorPos)
+                selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, newCursorPos)
+                focused.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArgs)
+            }
+            
+            focused.recycle()
+        } else {
+            Log.e("SwiftSpeakAccess", "No editable node found to inject text")
+        }
+        root.recycle()
+    }
+
+    private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findEditableNode(child)
+            if (result != null) return result
+            child.recycle()
+        }
+        return null
     }
 }

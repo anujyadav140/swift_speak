@@ -41,7 +41,9 @@ dependencies:
     path: ./packages/flutter_overlay_window
   google_generative_ai: ^0.4.7
   record: ^6.1.2
+  speech_to_text: ^7.0.0
   path_provider: ^2.1.1
+  firebase_vertexai: ^1.8.3
 
 dev_dependencies:
   flutter_test:

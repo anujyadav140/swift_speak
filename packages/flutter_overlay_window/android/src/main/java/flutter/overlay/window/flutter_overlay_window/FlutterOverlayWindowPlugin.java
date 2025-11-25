@@ -132,6 +132,17 @@ public class FlutterOverlayWindowPlugin implements
                 result.success(true);
             }
             return;
+        } else if (call.method.equals("insertText")) {
+            String text = call.argument("text");
+            if (text != null) {
+                Intent intent = new Intent("com.example.swift_speak.INSERT_TEXT");
+                intent.putExtra("text", text);
+                intent.setPackage(context.getPackageName());
+                context.sendBroadcast(intent);
+                result.success(true);
+            } else {
+                result.error("INVALID_ARGUMENT", "Text cannot be null", null);
+            }
         } else {
             result.notImplemented();
         }
