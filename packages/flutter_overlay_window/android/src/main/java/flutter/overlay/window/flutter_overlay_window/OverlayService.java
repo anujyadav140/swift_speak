@@ -23,6 +23,8 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.ViewTreeObserver;
+import android.graphics.Rect;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -58,9 +60,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public static boolean isRunning = false;
     private WindowManager windowManager = null;
     private FlutterView flutterView;
+    private View mHiddenView; // Hidden view for keyboard detection
     private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
-    private int clickableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+    private int clickableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
 
     private Handler mAnimationHandler = new Handler();
@@ -83,13 +87,26 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onDestroy() {
         Log.d("OverLay", "Destroying the overlay window service");
         if (windowManager != null) {
-            windowManager.removeView(flutterView);
+            if (mHiddenView != null) {
+                try {
+                    windowManager.removeView(mHiddenView);
+                } catch (IllegalArgumentException e) {
+                    // View not attached, ignore
+                }
+                mHiddenView = null;
+            }
+            try {
+                windowManager.removeView(flutterView);
+            } catch (IllegalArgumentException e) {
+                // View not attached, ignore
+            }
             windowManager = null;
             flutterView.detachFromFlutterEngine();
             flutterView = null;
         }
         isRunning = false;
-        NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+        NotificationManager notificationManager = (NotificationManager) getApplicationContext()
+                .getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
         instance = null;
     }
@@ -103,7 +120,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
         boolean isCloseWindow = intent.getBooleanExtra(INTENT_EXTRA_IS_CLOSE_WINDOW, false);
         if (isCloseWindow) {
             if (windowManager != null) {
-                windowManager.removeView(flutterView);
+                if (mHiddenView != null) {
+                    try {
+                        windowManager.removeView(mHiddenView);
+                    } catch (IllegalArgumentException e) {
+                        // View not attached, ignore
+                    }
+                    mHiddenView = null;
+                }
+                try {
+                    windowManager.removeView(flutterView);
+                } catch (IllegalArgumentException e) {
+                    // View not attached, ignore
+                }
                 windowManager = null;
                 flutterView.detachFromFlutterEngine();
                 stopSelf();
@@ -112,10 +141,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return START_STICKY;
         }
         if (windowManager != null) {
-            windowManager.removeView(flutterView);
+            if (mHiddenView != null) {
+                try {
+                    windowManager.removeView(mHiddenView);
+                } catch (IllegalArgumentException e) {
+                    // View not attached, ignore
+                }
+                mHiddenView = null;
+            }
+            try {
+                windowManager.removeView(flutterView);
+            } catch (IllegalArgumentException e) {
+                // View not attached, ignore
+            }
             windowManager = null;
             flutterView.detachFromFlutterEngine();
-            stopSelf();
         }
         isRunning = true;
         Log.d("onStartCommand", "Service started");
@@ -163,33 +203,45 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 WindowSetup.height != -1999 ? WindowSetup.height : screenHeight(),
                 0,
                 -statusBarHeightPx(),
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                        : WindowManager.LayoutParams.TYPE_PHONE,
                 WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                         | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-                PixelFormat.TRANSLUCENT
-        );
+                PixelFormat.TRANSLUCENT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
             params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
         }
         params.gravity = WindowSetup.gravity;
         flutterView.setOnTouchListener(this);
         windowManager.addView(flutterView, params);
+
+        // Add hidden view for keyboard detection
+        addHiddenView();
+
         moveOverlay(dx, dy, null);
         return START_STICKY;
     }
-
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     private int screenHeight() {
         Display display = windowManager.getDefaultDisplay();
         DisplayMetrics dm = new DisplayMetrics();
         display.getRealMetrics(dm);
-        return inPortrait() ?
-                dm.heightPixels + statusBarHeightPx() + navigationBarHeightPx()
-                :
-                dm.heightPixels + statusBarHeightPx();
+        return inPortrait() ? dm.heightPixels + statusBarHeightPx() + navigationBarHeightPx()
+                : dm.heightPixels + statusBarHeightPx();
+    }
+
+    private int getVisibleScreenHeight() {
+        if (mHiddenView != null) {
+            Rect r = new Rect();
+            mHiddenView.getWindowVisibleDisplayFrame(r);
+            return r.bottom;
+        }
+        DisplayMetrics metrics = new DisplayMetrics();
+        windowManager.getDefaultDisplay().getRealMetrics(metrics);
+        return metrics.heightPixels;
     }
 
     private int statusBarHeightPx() {
@@ -220,14 +272,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return mNavigationBarHeight;
     }
 
-
     private void updateOverlayFlag(MethodChannel.Result result, String flag) {
         if (windowManager != null) {
             WindowSetup.setFlag(flag);
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             params.flags = WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                    WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+                    WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
+                    | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             } else {
@@ -240,52 +292,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-    private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
-        if (windowManager != null) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
-            params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
-            WindowSetup.enableDrag = enableDrag;
-
-            // Clamp to screen bounds using dynamic metrics
-            DisplayMetrics metrics = new DisplayMetrics();
-            windowManager.getDefaultDisplay().getRealMetrics(metrics);
-            int screenWidth = metrics.widthPixels;
-            int screenHeight = metrics.heightPixels;
-            
-            // We need to resolve the actual pixel width/height for clamping
-            // If params.width is -1 (MATCH_PARENT) or -2 (WRAP_CONTENT), we can't easily clamp x/y based on it without measuring.
-            // However, for this specific use case, we are passing explicit dp values.
-            
-            int newWidthPx = params.width;
-            int newHeightPx = params.height;
-
-            if (newWidthPx > 0 && newHeightPx > 0) {
-                 int xx = params.x;
-                 int yy = params.y;
-
-                 if (xx < 0) xx = 0;
-                 if (xx > screenWidth - newWidthPx) xx = screenWidth - newWidthPx;
-                 
-                 if (yy < 0) yy = 0;
-                 if (yy > screenHeight - newHeightPx) yy = screenHeight - newHeightPx;
-                 
-                 params.x = xx;
-                 params.y = yy;
-            }
-
-            windowManager.updateViewLayout(flutterView, params);
-            result.success(true);
-        } else {
-            result.success(false);
-        }
-    }
-
     private void moveOverlay(int x, int y, MethodChannel.Result result) {
         if (windowManager != null) {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             params.x = (x == -1999 || x == -1) ? -1 : dpToPx(x);
             params.y = dpToPx(y);
+
+            // Clamp to visible screen height (avoid keyboard)
+            int visibleHeight = getVisibleScreenHeight();
+            int viewHeight = flutterView.getHeight();
+            if (params.y > visibleHeight - viewHeight) {
+                params.y = visibleHeight - viewHeight;
+            }
+
             windowManager.updateViewLayout(flutterView, params);
             if (result != null)
                 result.success(true);
@@ -294,7 +313,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 result.success(false);
         }
     }
-
 
     public static Map<String, Double> getCurrentPosition() {
         if (instance != null && instance.flutterView != null) {
@@ -323,7 +341,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-
     @Override
     public void onCreate() {
         // Get the cached FlutterEngine
@@ -334,9 +351,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.e("OverlayService", "Flutter engine not found, hence creating new flutter engine");
             FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
             DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
-                FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                "overlayMain"
-            );  // "overlayMain" is custom entry point
+                    FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                    "overlayMain"); // "overlayMain" is custom entry point
 
             flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
 
@@ -347,7 +363,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Create the MethodChannel with the properly initialized FlutterEngine
         if (flutterEngine != null) {
             flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-            overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+            overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
+                    OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
         }
 
         createNotificationChannel();
@@ -361,6 +378,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         PendingIntent pendingIntent = PendingIntent.getActivity(this,
                 0, notificationIntent, pendingFlags);
         final int notifyIcon = getDrawableResourceId("mipmap", "launcher");
+
         Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
                 .setContentTitle(WindowSetup.overlayTitle)
                 .setContentText(WindowSetup.overlayContent)
@@ -372,13 +390,67 @@ public class OverlayService extends Service implements View.OnTouchListener {
         instance = this;
     }
 
+    private boolean inPortrait() {
+        return mResources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+    }
+
+    private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
+        if (windowManager != null) {
+            Log.d("OverlayService",
+                    "resizeOverlay: width=" + width + " height=" + height + " enableDrag=" + enableDrag);
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
+            params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
+            WindowSetup.enableDrag = enableDrag;
+
+            // Clamp to screen bounds using dynamic metrics
+            DisplayMetrics metrics = new DisplayMetrics();
+            windowManager.getDefaultDisplay().getRealMetrics(metrics);
+            int screenWidth = metrics.widthPixels;
+            int screenHeight = metrics.heightPixels;
+
+            // We need to resolve the actual pixel width/height for clamping
+            // If params.width is -1 (MATCH_PARENT) or -2 (WRAP_CONTENT), we can't easily
+            // clamp x/y based on it without measuring.
+            // However, for this specific use case, we are passing explicit dp values.
+
+            int newWidthPx = params.width;
+            int newHeightPx = params.height;
+
+            if (newWidthPx > 0 && newHeightPx > 0) {
+                int xx = params.x;
+                int yy = params.y;
+
+                if (xx < 0)
+                    xx = 0;
+                if (xx > screenWidth - newWidthPx)
+                    xx = screenWidth - newWidthPx;
+
+                if (yy < 0)
+                    yy = 0;
+
+                // Clamp to visible screen height (avoid keyboard)
+                int visibleHeight = getVisibleScreenHeight();
+                if (yy > visibleHeight - newHeightPx)
+                    yy = visibleHeight - newHeightPx;
+
+                params.x = xx;
+                params.y = yy;
+            }
+
+            windowManager.updateViewLayout(flutterView, params);
+            result.success(true);
+        } else {
+            result.success(false);
+        }
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel serviceChannel = new NotificationChannel(
                     OverlayConstants.CHANNEL_ID,
                     "Foreground Service Channel",
-                    NotificationManager.IMPORTANCE_DEFAULT
-            );
+                    NotificationManager.IMPORTANCE_DEFAULT);
             NotificationManager manager = getSystemService(NotificationManager.class);
             assert manager != null;
             manager.createNotificationChannel(serviceChannel);
@@ -386,7 +458,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private int getDrawableResourceId(String resType, String name) {
-        return getApplicationContext().getResources().getIdentifier(String.format("ic_%s", name), resType, getApplicationContext().getPackageName());
+        return getApplicationContext().getResources().getIdentifier(String.format("ic_%s", name), resType,
+                getApplicationContext().getPackageName());
     }
 
     private int dpToPx(int dp) {
@@ -396,10 +469,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     private double pxToDp(int px) {
         return (double) px / mResources.getDisplayMetrics().density;
-    }
-
-    private boolean inPortrait() {
-        return mResources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
     }
 
     @Override
@@ -434,16 +503,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     windowManager.getDefaultDisplay().getRealMetrics(metrics);
                     int screenWidth = metrics.widthPixels;
                     int screenHeight = metrics.heightPixels;
-                    
+
                     int viewWidth = flutterView.getWidth();
                     int viewHeight = flutterView.getHeight();
 
+                    // Clamp to visible screen height (avoid keyboard)
+                    int visibleHeight = getVisibleScreenHeight();
+
                     // Ensure we don't go off screen
-                    if (xx < 0) xx = 0;
-                    if (xx > screenWidth - viewWidth) xx = screenWidth - viewWidth;
-                    
-                    if (yy < 0) yy = 0;
-                    if (yy > screenHeight - viewHeight) yy = screenHeight - viewHeight;
+                    if (xx < 0)
+                        xx = 0;
+                    if (xx > screenWidth - viewWidth)
+                        xx = screenWidth - viewWidth;
+
+                    if (yy < 0)
+                        yy = 0;
+                    if (yy > visibleHeight - viewHeight)
+                        yy = visibleHeight - viewHeight;
 
                     params.x = xx;
                     params.y = yy;
@@ -456,7 +532,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 case MotionEvent.ACTION_CANCEL:
                     lastYPosition = params.y;
                     if (!WindowSetup.positionGravity.equals("none")) {
-                        if (windowManager == null) return false;
+                        if (windowManager == null)
+                            return false;
                         windowManager.updateViewLayout(flutterView, params);
                         mTrayTimerTask = new TrayAnimationTimerTask();
                         mTrayAnimationTimer = new Timer();
@@ -481,7 +558,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
             mDestY = lastYPosition;
             switch (WindowSetup.positionGravity) {
                 case "auto":
-                    mDestX = (params.x + (flutterView.getWidth() / 2)) <= szWindow.x / 2 ? 0 : szWindow.x - flutterView.getWidth();
+                    mDestX = (params.x + (flutterView.getWidth() / 2)) <= szWindow.x / 2 ? 0
+                            : szWindow.x - flutterView.getWidth();
                     return;
                 case "left":
                     mDestX = 0;
@@ -512,5 +590,57 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
+    private void addHiddenView() {
+        mHiddenView = new View(this);
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                1, // Minimal width
+                WindowManager.LayoutParams.MATCH_PARENT, // Full height to detect resize
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                        : WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM, // Added FLAG_ALT_FOCUSABLE_IM
+                PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.START | Gravity.TOP;
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE; // Crucial
 
+        mHiddenView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            private boolean wasKeyboardVisible = false;
+
+            @Override
+            public void onGlobalLayout() {
+                if (mHiddenView == null || windowManager == null)
+                    return;
+
+                Rect r = new Rect();
+                mHiddenView.getWindowVisibleDisplayFrame(r);
+
+                DisplayMetrics metrics = new DisplayMetrics();
+                windowManager.getDefaultDisplay().getRealMetrics(metrics);
+                int screenHeight = metrics.heightPixels;
+
+                int keypadHeight = screenHeight - r.bottom;
+
+                // Use a fixed threshold (e.g., 100dp) instead of ratio for better reliability
+                int thresholdPx = dpToPx(100);
+
+                Log.d("OverlayService", "Keyboard Check: ScreenReal=" + screenHeight + " RectBottom=" + r.bottom
+                        + " KeypadHeight=" + keypadHeight + " Threshold=" + thresholdPx);
+
+                boolean isKeyboardVisible = keypadHeight > thresholdPx;
+
+                if (isKeyboardVisible != wasKeyboardVisible) {
+                    wasKeyboardVisible = isKeyboardVisible;
+                    Log.d("OverlayService", "Keyboard visibility changed: " + isKeyboardVisible);
+                    if (overlayMessageChannel != null) {
+                        Log.d("OverlayService", "Sending keyboard visibility: " + isKeyboardVisible);
+                        overlayMessageChannel.send(isKeyboardVisible);
+                    }
+                }
+            }
+        });
+
+        if (windowManager != null) {
+            windowManager.addView(mHiddenView, params);
+        }
+    }
 }

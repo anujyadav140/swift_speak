@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="150dp"
+    android:background="#1A1A1A"
+    android:orientation="vertical"
+    android:gravity="center">
+
+    <com.example.swift_speak.WaveformView
+        android:id="@+id/waveform_view"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btn_switch_keyboard"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Switch Keyboard"
+        android:backgroundTint="#333333"
+        android:textColor="#FFFFFF"/>
+
+</LinearLayout>

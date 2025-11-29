@@ -1,8 +1,19 @@
+
+import 'package:avatar_glow/avatar_glow.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:avatar_glow/avatar_glow.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:swift_speak/features/home/quick_tips_screen.dart';
+import 'package:swift_speak/features/stats/stats_screen.dart';
+import 'package:swift_speak/features/dictionary/dictionary_screen.dart';
+import 'package:swift_speak/features/style/style_screen.dart';
+import 'package:swift_speak/features/snippets/snippets_screen.dart';
+
+import 'package:swift_speak/services/theme_service.dart';
+import '../../widgets/border_beam_painter.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,233 +22,417 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
+  final ThemeService _themeService = ThemeService();
+  bool _hasMicPermission = false;
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  static const EventChannel _eventChannel = EventChannel('com.example.swift_speak/input_state');
-
-  AppLifecycleState? _lastLifecycleState;
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    _lastLifecycleState = state;
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      _showOverlay();
-    } else if (state == AppLifecycleState.resumed) {
-      FlutterOverlayWindow.closeOverlay();
-    }
-  }
+  int _selectedIndex = 1;
+  late AnimationController _beamController;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _startListeningToInputState();
+    _checkMicPermission();
+    _beamController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4000),
+    )..repeat();
   }
 
-  void _startListeningToInputState() {
-    _eventChannel.receiveBroadcastStream().listen((event) {
-      if (event is bool) {
-        debugPrint("Input State Changed: $event");
-        // Share data with the overlay
-        FlutterOverlayWindow.shareData(event);
+  @override
+  void dispose() {
+    _beamController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkMicPermission() async {
+    final audioRecorder = AudioRecorder();
+    final hasPermission = await audioRecorder.hasPermission();
+    audioRecorder.dispose();
+    if (mounted) {
+      setState(() {
+        _hasMicPermission = hasPermission;
+      });
+    }
+  }
+
+  Future<void> _requestMicPermission() async {
+    if (_hasMicPermission) return;
+
+    final status = await Permission.microphone.request();
+    if (status.isGranted) {
+      if (mounted) {
+        setState(() {
+          _hasMicPermission = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Microphone permission granted!")),
+        );
       }
-    }, onError: (error) {
-      debugPrint("Error listening to input state: $error");
-    });
-  }
-
-  Future<void> _requestOverlayPermission() async {
-    final bool status = await FlutterOverlayWindow.isPermissionGranted();
-    if (!status) {
-      final bool? granted = await FlutterOverlayWindow.requestPermission();
-      if (granted == true) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Overlay permission granted!")),
-          );
-        }
+    } else if (status.isPermanentlyDenied) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Permission permanently denied. Opening settings..."),
+          ),
+        );
+        await openAppSettings();
       }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Overlay permission already granted!")),
+          const SnackBar(
+              content: Text("Permission denied. Please enable in App Settings.")),
         );
       }
     }
-  }
-
-  Future<void> _showOverlay({bool force = false}) async {
-    debugPrint("Attempting to show overlay. Force: $force");
-    final bool status = await FlutterOverlayWindow.isPermissionGranted();
-    debugPrint("Overlay permission status: $status");
-    
-    if (!status) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Overlay permission not granted! Requesting now...")),
-        );
-      }
-      _requestOverlayPermission();
-      return;
-    }
-
-    // Check Mic Permission (Critical for Android 14 FGS)
-    final audioRecorder = AudioRecorder();
-    final bool hasMicPermission = await audioRecorder.hasPermission();
-    audioRecorder.dispose();
-    
-    if (!hasMicPermission) {
-      debugPrint("Microphone permission NOT granted. Aborting overlay show to prevent crash.");
-      if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Microphone permission required for overlay.")),
-        );
-      }
-      return;
-    }
-    
-    if (await FlutterOverlayWindow.isActive()) {
-      if (force) {
-        debugPrint("Overlay is active, but force is true. Closing and restarting...");
-        await FlutterOverlayWindow.closeOverlay();
-        // Give it a moment to close
-        await Future.delayed(const Duration(milliseconds: 200));
-      } else {
-        debugPrint("Overlay is already active.");
-        return;
-      }
-    }
-
-    if (!force && _lastLifecycleState == AppLifecycleState.resumed) {
-      debugPrint("App is resumed and force is false. Not showing overlay.");
-      return;
-    }
-
-    debugPrint("Calling FlutterOverlayWindow.showOverlay");
-    
-    // Calculate center position for initial placement
-    // Assuming collapsed size is roughly 50x100
-    final screenSize = MediaQuery.of(context).size;
-    final int startX = (screenSize.width - 50) ~/ 2;
-    final int startY = (screenSize.height - 100) ~/ 2;
-
-    await FlutterOverlayWindow.showOverlay(
-      enableDrag: true, // Enable drag
-      overlayTitle: "Swift Speak",
-      overlayContent: "Swift Speak Overlay",
-      flag: OverlayFlag.defaultFlag,
-      visibility: NotificationVisibility.visibilityPublic,
-      alignment: OverlayAlignment.topLeft, // Use TopLeft to match clamping logic
-      positionGravity: PositionGravity.none, // Disable auto positioning
-      height: 200, // Make it bigger
-      width: 200,
-      startX: startX,
-      startY: startY,
-    );
-    debugPrint("FlutterOverlayWindow.showOverlay called");
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Swift Speak Home"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
           children: [
-            const Text(
-              "Welcome to Swift Speak!",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "Minimize the app to see the overlay.",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: _requestOverlayPermission,
-              child: const Text("Request Overlay Permission"),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                // Request Mic Permission first to prevent crash
-                 try {
-                   final audioRecorder = AudioRecorder();
-                   if (await audioRecorder.hasPermission()) {
-                     const channel = MethodChannel('com.example.swift_speak/settings');
-                     await channel.invokeMethod('openAccessibilitySettings');
-                   } else {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Please grant Microphone permission first.")),
-                        );
-                     }
-                   }
-                   audioRecorder.dispose();
-                 } catch (e) {
-                   debugPrint("Error requesting mic permission: $e");
-                 }
-              },
-              child: const Text("Enable Typing Detection (Accessibility)"),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                 try {
-                   final audioRecorder = AudioRecorder();
-                   // Check and request permission
-                   if (await audioRecorder.hasPermission()) {
-                     if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Mic permission granted!")),
-                        );
-                     }
-                   } else {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Permission denied. Please enable in App Settings.")),
-                        );
-                     }
-                   }
-                   audioRecorder.dispose();
-                 } catch (e) {
-                   debugPrint("Error requesting mic permission: $e");
-                 }
-              },
-              child: const Text("Request Mic Permission"),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _showOverlay(force: true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo,
-                foregroundColor: Colors.white,
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
               ),
-              child: const Text("Force Show Overlay"),
+              child: Text(
+                'Swift Speak',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.logout, color: Theme.of(context).iconTheme.color),
+              title: const Text('Sign Out'),
+              onTap: () async {
+                await FirebaseAuth.instance.signOut();
+              },
             ),
           ],
         ),
       ),
+      appBar: AppBar(
+        title: Text(
+          _selectedIndex == 0 
+              ? "Dictionary" 
+              : _selectedIndex == 2 
+                  ? "Snippets"
+                  : _selectedIndex == 3
+                      ? "Style" 
+                      : "Swift Speak",
+          style: GoogleFonts.ebGaramond(
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+          ),
+        ),
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.emoji_events,
+              color: Theme.of(context).iconTheme.color,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const StatsScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: Icon(
+              isDark ? Icons.light_mode : Icons.dark_mode,
+              color: Theme.of(context).iconTheme.color,
+            ),
+            onPressed: () async {
+              final newMode = isDark ? ThemeMode.light : ThemeMode.dark;
+              await _themeService.updateThemeMode(newMode);
+            },
+          ),
+        ],
+      ),
+      body: _selectedIndex == 0 
+          ? const DictionaryScreen() 
+          : _selectedIndex == 1 
+              ? _buildHomeContent() 
+              : _selectedIndex == 2
+                  ? const SnippetsScreen()
+                  : const StyleScreen(),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: isDark ? Colors.black : Colors.white,
+          border: Border(
+            top: BorderSide(
+              color: isDark ? Colors.white10 : Colors.black12,
+              width: 1,
+            ),
+          ),
+        ),
+        child: SafeArea(
+          child: SizedBox(
+            height: 80,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(0, Icons.book_outlined, Icons.book),
+                _buildNavItem(1, Icons.home_outlined, Icons.home),
+                _buildNavItem(2, Icons.content_cut_outlined, Icons.content_cut),
+                _buildNavItem(3, Icons.auto_awesome_outlined, Icons.auto_awesome),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
+
+  Widget _buildNavItem(int index, IconData iconOutlined, IconData iconFilled) {
+    final isSelected = _selectedIndex == index;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedIndex = index;
+        });
+      },
+      child: CustomPaint(
+        painter: isSelected 
+            ? BorderBeamPainter(
+                animation: _beamController, 
+                borderRadius: 20,
+                color: isDark ? Colors.white : Colors.black,
+              ) 
+            : null,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: Colors.transparent,
+          ),
+          child: Icon(
+            isSelected ? iconFilled : iconOutlined,
+            color: isDark ? Colors.white : Colors.black,
+            size: 28,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHomeContent() {
+    final user = FirebaseAuth.instance.currentUser;
+    final userName = user?.displayName ?? "User";
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final size = MediaQuery.of(context).size;
+    final width = size.width;
+    final height = size.height;
+
+    // Responsive calculations
+    final gridHeight = height * 0.25;
+    final cardPadding = width * 0.04;
+    final iconPadding = width * 0.025;
+    final largeIconSize = width * 0.07;
+    final smallIconSize = width * 0.05;
+    final titleFontSize = width * 0.05;
+    final subtitleFontSize = width * 0.03;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(width * 0.06),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Welcome Header
+          Text(
+            "Welcome back, $userName 👋",
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w500,
+                  fontSize: width * 0.055,
+                ),
+          ),
+
+
+          SizedBox(height: width * 0.04),
+
+          // Grid Layout
+          SizedBox(
+            height: gridHeight,
+            child: Row(
+              children: [
+                // Left Column: Quick Tips (Yellow)
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const QuickTipsScreen()),
+                      );
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFC107), // Amber/Yellow
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: EdgeInsets.all(cardPadding),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(iconPadding),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.3),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.lightbulb, color: Colors.white, size: largeIconSize),
+                          ),
+                          const Spacer(),
+                          Text(
+                            "Quick Tips",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: titleFontSize,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: height * 0.005),
+                          Text(
+                            "Learn how to use Swift Speak",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: subtitleFontSize,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                
+                SizedBox(width: width * 0.04),
+                
+                // Right Column
+                Expanded(
+                  child: Column(
+                    children: [
+                      // Top Right: Mic Permission (Purple)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _requestMicPermission,
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF9575CD), // Purple
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            padding: EdgeInsets.all(cardPadding * 0.8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.all(iconPadding * 0.8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _hasMicPermission ? Icons.mic : Icons.mic_off,
+                                    color: Colors.white,
+                                    size: smallIconSize,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  _hasMicPermission ? "Mic Active" : "Enable Mic",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize * 0.8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  _hasMicPermission ? "Ready" : "Tap to allow",
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: subtitleFontSize * 0.9,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      SizedBox(height: height * 0.02),
+                      
+                      // Bottom Right: Dictionary (Blue Grey)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedIndex = 0;
+                            });
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF607D8B), // Blue Grey
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            padding: EdgeInsets.all(cardPadding * 0.8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.all(iconPadding * 0.8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.book, color: Colors.white, size: smallIconSize),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  "Dictionary",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize * 0.8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  "Manage words",
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: subtitleFontSize * 0.9,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
 }

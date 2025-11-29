@@ -79,7 +79,7 @@ class GlobalInputListenerService : AccessibilityService() {
                 val intent = Intent("com.example.swift_speak.INPUT_STATE")
                 intent.setPackage(packageName) // Make explicit to ensure delivery to background activity
                 intent.putExtra("is_active", isInputActive)
-                sendBroadcast(intent)
+                // sendBroadcast(intent) // Disabled per user request to remove overlay
                 
                 Log.d("SwiftSpeakAccess", "Broadcast Sent: $isInputActive")
             }

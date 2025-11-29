@@ -2,9 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:firebase_vertexai/firebase_vertexai.dart';
 import 'package:flutter/material.dart';
+import '../../services/dictionary_service.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import '../../services/speech_service.dart';
+import '../../services/gemini_service.dart';
+import '../../services/snippet_service.dart';
+import '../../models/snippet.dart';
 
 class OverlayToolbar extends StatefulWidget {
   const OverlayToolbar({super.key});
@@ -16,43 +21,50 @@ class OverlayToolbar extends StatefulWidget {
 class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStateMixin {
   bool _isExpanded = false;
   bool _isInputActive = false;
-  // bool _isProcessing = false; // Removed blocking UI state
-  late AnimationController _borderBeamController;
+  late AnimationController _animationController;
   
   // Services
   final SpeechService _speechService = SpeechService();
+  final GeminiService _geminiService = GeminiService();
+  final SnippetService _snippetService = SnippetService();
+  final DictionaryService _dictionaryService = DictionaryService();
   
   // STT State
   bool _isRecording = false;
   
   // Waveform State
-  List<double> _amplitudes = [];
-  final int _maxAmplitudes = 40; // More bars for smoother look
   double _latestSoundLevel = 0.0;
-  Timer? _waveformTimer;
   
   // AI Vars
-  late GenerativeModel _model;
+  // late GenerativeModel _model; // Removed direct usage
   
   // Deduplication vars
   String _lastInjectedText = '';
   DateTime _lastInjectionTime = DateTime.fromMillisecondsSinceEpoch(0);
+  
+  // Data
+  List<Snippet> _snippets = [];
+  List<DictionaryTerm> _userTerms = [];
 
   // Subscriptions
   StreamSubscription? _resultSubscription;
   StreamSubscription? _soundLevelSubscription;
   StreamSubscription? _statusSubscription;
+  StreamSubscription? _snippetsSubscription;
+  StreamSubscription? _dictionarySubscription;
 
   @override
   void initState() {
     super.initState();
-    _borderBeamController = AnimationController(
+    // Single controller for beam and waveform animation
+    _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4),
+      duration: const Duration(seconds: 2),
     )..repeat();
 
-    _initVertexAI();
+    // _initVertexAI(); // Handled by GeminiService
     _setupSpeechListeners();
+    _setupDataListeners();
 
     // Listen to data shared from the main app
     FlutterOverlayWindow.overlayListener.listen((event) {
@@ -60,9 +72,10 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
         if (event) {
           // Input Active: Auto Expand first
           setState(() {
+            debugPrint("OverlayToolbar: Received Input Active Event");
             _isExpanded = true;
             // Resize immediately for expansion
-            FlutterOverlayWindow.resizeOverlay(220, 70, true);
+            FlutterOverlayWindow.resizeOverlay(260, 80, true);
           });
           
           // Delay beam activation until expansion finishes (250ms)
@@ -82,13 +95,32 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
             FlutterOverlayWindow.resizeOverlay(70, 120, true);
           });
         }
+      } else {
+        debugPrint("OverlayToolbar: Received Event: $event");
       }
     });
   }
 
-  void _initVertexAI() {
-    // Initialize Gemini 1.5 Flash for speed
-    _model = FirebaseVertexAI.instance.generativeModel(model: 'gemini-2.0-flash-lite');
+  // void _initVertexAI() {
+  //   // Initialize Gemini 1.5 Flash for speed
+  //   _model = FirebaseVertexAI.instance.generativeModel(model: 'gemini-2.0-flash-lite');
+  // }
+
+  void _setupDataListeners() {
+    _snippetsSubscription = _snippetService.getSnippets().listen((snippets) {
+      if (mounted) {
+        setState(() {
+          _snippets = snippets;
+        });
+      }
+    });
+    _dictionarySubscription = _dictionaryService.getTerms().listen((terms) {
+      if (mounted) {
+        setState(() {
+          _userTerms = terms;
+        });
+      }
+    });
   }
 
   void _setupSpeechListeners() {
@@ -103,14 +135,17 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
 
     // 2. Sound Level Listener (for Waveform)
     _soundLevelSubscription = _speechService.onSoundLevel.listen((level) {
-       // Just update the target level, don't setState here to avoid jank
-       // Normalize: STT often returns -10 to 10 or similar.
-       // We want a value between 0.0 and 1.0.
-       // Assuming level is in dB-like range or raw amplitude. 
-       // Let's try a simple absolute normalization first.
        double normalized = level.abs() / 10.0;
        if (normalized > 1.0) normalized = 1.0;
-       _latestSoundLevel = normalized;
+       
+       if (mounted) {
+         setState(() {
+           _latestSoundLevel = normalized;
+         });
+       }
+       
+       // Send to IME for native waveform
+       FlutterOverlayWindow.sendAudioLevel(normalized);
     });
 
     // 3. Status Listener
@@ -119,51 +154,14 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
     });
   }
 
-  void _startWaveformTimer() {
-    _waveformTimer?.cancel();
-    // 60 FPS update loop for smooth animation
-    _waveformTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
-      if (!mounted) return;
-      
-      setState(() {
-        // Smoothly interpolate towards the latest level
-        // This creates a "falloff" effect
-        double current = _amplitudes.isEmpty ? 0.0 : _amplitudes.last;
-        double target = _latestSoundLevel;
-        
-        // Interpolation factor (adjust for speed)
-        double lerp = 0.2; 
-        double next = current + (target - current) * lerp;
-        
-        // Add some noise if it's too static to make it look "alive"
-        if (next < 0.05) next = math.max(0.02, next + (math.Random().nextDouble() * 0.05));
-
-        _amplitudes.add(next);
-        if (_amplitudes.length > _maxAmplitudes) {
-          _amplitudes.removeAt(0);
-        }
-      });
-    });
-  }
-
-  void _stopWaveformTimer() {
-    _waveformTimer?.cancel();
-    _waveformTimer = null;
-    if (mounted) {
-      setState(() {
-        _amplitudes.clear();
-        _latestSoundLevel = 0.0;
-      });
-    }
-  }
-
   @override
   void dispose() {
-    _borderBeamController.dispose();
-    _waveformTimer?.cancel();
+    _animationController.dispose();
     _resultSubscription?.cancel();
     _soundLevelSubscription?.cancel();
     _statusSubscription?.cancel();
+    _snippetsSubscription?.cancel();
+    _dictionarySubscription?.cancel();
     _speechService.dispose();
     super.dispose();
   }
@@ -174,7 +172,7 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
     });
     // Adjust overlay size based on state
     if (_isExpanded) {
-      FlutterOverlayWindow.resizeOverlay(220, 70, true); // Adjusted width
+      FlutterOverlayWindow.resizeOverlay(260, 80, true); // Adjusted width
     } else {
       FlutterOverlayWindow.resizeOverlay(70, 120, true); // Enable drag when contracted
     }
@@ -186,31 +184,33 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
     });
 
     if (_isRecording) {
-      // Start
-      _amplitudes = List.filled(_maxAmplitudes, 0.05, growable: true); // Init with low noise
-      _startWaveformTimer();
       await _speechService.startListening();
     } else {
-      // Stop
-      _stopWaveformTimer();
       await _speechService.stopListening();
+      if (mounted) {
+        setState(() {
+          _latestSoundLevel = 0.0;
+        });
+      }
     }
   }
 
   Future<void> _processAndInject(String rawText) async {
+    print("OverlayToolbar: Processing text: '$rawText'");
     if (rawText.trim().isEmpty) return;
     
-    // Don't block UI with _isProcessing
-    // Just process in background
-
     try {
-      final prompt = "Rewrite the following text with proper grammar, punctuation, and capitalization. Do not add any introductory or concluding remarks. Output ONLY the corrected text: '$rawText'";
-      final content = [Content.text(prompt)];
-      final response = await _model.generateContent(content);
+      print("OverlayToolbar: Current available snippets count: ${_snippets.length}");
+      for (var s in _snippets) {
+        print("OverlayToolbar: Available snippet: '${s.shortcut}'");
+      }
       
-      String correctedText = response.text ?? rawText;
-      // Remove any potential leading/trailing quotes or markdown that the model might add
-      correctedText = correctedText.replaceAll(RegExp(r'^["`]+|["`]+$'), '').trim();
+      // Use GeminiService to format text and expand snippets
+      final correctedText = await _geminiService.formatText(
+        rawText, 
+        snippets: _snippets, // Pass ALL snippets for function calling
+        userTerms: _userTerms,
+      );
       
       debugPrint("Gemini Corrected: $correctedText");
       
@@ -221,25 +221,9 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
     }
   }
 
-  void _injectText(String text) {
+  Future<void> _injectText(String text) async {
     final now = DateTime.now();
-    
-    // 1. Exact duplicate guard (Glitch loop protection)
-    if (text == _lastInjectedText && now.difference(_lastInjectionTime).inMilliseconds < 2000) {
-      debugPrint("Duplicate injection prevented: $text");
-      return;
-    }
-
     String textToInject = text;
-
-    // 2. Overlap removal (Context awareness)
-    if (_lastInjectedText.isNotEmpty) {
-      String cleaned = _removeOverlap(_lastInjectedText, text);
-      if (cleaned != text) {
-        debugPrint("Overlap detected. Original: '$text', Cleaned: '$cleaned'");
-        textToInject = cleaned;
-      }
-    }
 
     if (textToInject.trim().isEmpty) {
       return;
@@ -247,52 +231,16 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
 
     debugPrint("Injecting text: $textToInject");
     FlutterOverlayWindow.insertText(" $textToInject"); // Add space for continuity
-    _lastInjectedText = text; // Store the full text we received/processed
+    _lastInjectedText = text;
     _lastInjectionTime = now;
-  }
-
-  String _removeOverlap(String last, String current) {
-    if (last.isEmpty || current.isEmpty) return current;
-
-    List<String> lastWords = last.trim().split(' ');
-    List<String> currentWords = current.trim().split(' ');
-
-    int maxOverlap = 0;
-    // Check for overlap of size k
-    for (int k = 1; k <= lastWords.length && k <= currentWords.length; k++) {
-      // Check if the last k words of 'last' match the first k words of 'current'
-      List<String> suffix = lastWords.sublist(lastWords.length - k);
-      List<String> prefix = currentWords.sublist(0, k);
-      
-      bool match = true;
-      for (int i = 0; i < k; i++) {
-        // Normalize: Remove punctuation and lowercase for comparison
-        String w1 = suffix[i].toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
-        String w2 = prefix[i].toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
-        if (w1 != w2) {
-          match = false;
-          break;
-        }
-      }
-      
-      if (match) {
-        maxOverlap = k;
-      }
-    }
-
-    if (maxOverlap > 0) {
-      // Remove the first k words from current
-      return currentWords.sublist(maxOverlap).join(' ');
-    }
-    
-    return current;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Monochromatic Theme Colors
-    const Color primaryColor = Colors.black;
-    const Color onPrimaryColor = Colors.white;
+    // Dark Theme Colors
+    const Color baseColor = Color(0xFF1A1A1A);
+    const Color accentColor = Colors.white;
+    const double borderRadius = 30.0; // Capsule shape
 
     return Material(
       color: Colors.transparent,
@@ -300,45 +248,37 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Border Beam Animation
+            // Glowing Beam Animation
             if (_isInputActive)
               AnimatedBuilder(
-                animation: _borderBeamController,
+                animation: _animationController,
                 builder: (context, child) {
                   return CustomPaint(
                     painter: BorderBeamPainter(
-                      progress: _borderBeamController.value,
-                      color: Colors.white,
-                      borderRadius: 30,
+                      animation: _animationController,
+                      borderRadius: borderRadius,
                     ),
                     child: SizedBox(
-                      width: _isExpanded ? 200 : 50, // Reduced width
-                      height: _isExpanded ? 60 : 100,
+                      width: _isExpanded ? 240 : 60,
+                      height: 60,
                     ),
                   );
                 },
               ),
             // Main Container
             AnimatedContainer(
-              duration: const Duration(milliseconds: 250), // Faster animation
+              duration: const Duration(milliseconds: 250),
               curve: Curves.easeInOut,
-              width: _isExpanded ? 200 : 50, // Reduced width
-              height: _isExpanded ? 60 : 100,
+              width: _isExpanded ? 240 : 60,
+              height: 60,
               decoration: BoxDecoration(
-                color: primaryColor,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                color: baseColor,
+                borderRadius: BorderRadius.circular(borderRadius),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
-              // Wrap content in Material to ensure InkWell/IconButton splashes are visible on top of the container color
               child: Material(
                 color: Colors.transparent,
-                child: _isExpanded ? _buildExpandedToolbar(onPrimaryColor) : _buildCollapsedView(onPrimaryColor),
+                child: _isExpanded ? _buildExpandedToolbar(accentColor) : _buildCollapsedView(accentColor),
               ),
             ),
           ],
@@ -357,7 +297,7 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
           Icon(
             Icons.chevron_left,
             color: iconColor,
-            size: 30,
+            size: 24,
           ),
         ],
       ),
@@ -369,18 +309,22 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
       scrollDirection: Axis.horizontal,
       physics: const NeverScrollableScrollPhysics(),
       child: Container(
-        width: 200, // Ensure Row takes full expanded width for even spacing
+        width: 240,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             if (_isRecording) ...[
-               // Custom Waveform
+               // Squiggly Waveform
                Expanded(
-                 child: CustomPaint(
-                   size: const Size(120, 40),
-                   painter: WaveformPainter(
-                     amplitudes: _amplitudes,
-                     color: Colors.white,
+                 child: Container(
+                   height: 30,
+                   child: CustomPaint(
+                     painter: SquigglyWaveformPainter(
+                       level: _latestSoundLevel,
+                       color: iconColor,
+                       animation: _animationController,
+                     ),
                    ),
                  ),
                ),
@@ -391,15 +335,24 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
               ),
             ],
             
-            // Mic Button (Always visible, highlighted when recording)
+            const SizedBox(width: 8),
+
+            // Mic Button
             Container(
-              decoration: _isRecording ? BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: _isRecording ? Colors.white : Colors.transparent,
                 shape: BoxShape.circle,
-              ) : null,
+                border: Border.all(color: iconColor),
+              ),
               child: IconButton(
+                padding: EdgeInsets.zero,
                 onPressed: _toggleRecording,
-                icon: Icon(Icons.mic, color: iconColor),
+                icon: Icon(
+                  _isRecording ? Icons.mic : Icons.mic_none, 
+                  color: _isRecording ? Colors.black : iconColor,
+                ),
               ),
             ),
 
@@ -418,76 +371,97 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
   }
 }
 
-class WaveformPainter extends CustomPainter {
-  final List<double> amplitudes;
+// Squiggly Waveform Painter (Matches Keyboard)
+class SquigglyWaveformPainter extends CustomPainter {
+  final double level;
   final Color color;
+  final Animation<double> animation;
 
-  WaveformPainter({required this.amplitudes, required this.color});
+  SquigglyWaveformPainter({
+    required this.level, 
+    required this.color,
+    required this.animation,
+  }) : super(repaint: animation);
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 3.0;
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
 
-    // Use a fixed number of bars for consistency or dynamic based on width
-    // Here we just draw what we have
-    final double spacing = size.width / (amplitudes.length > 1 ? amplitudes.length - 1 : 1);
-    final double centerY = size.height / 2;
+    final path = Path();
+    final midY = size.height / 2;
+    final width = size.width;
 
-    for (int i = 0; i < amplitudes.length; i++) {
-      final double x = i * spacing;
-      // Amplify the visual effect
-      final double height = (amplitudes[i] * size.height * 1.5).clamp(2.0, size.height);
+    path.moveTo(0, midY);
+
+    final phase = animation.value * 2 * math.pi;
+
+    // High frequency, chaotic waves
+    for (double x = 0; x <= width; x++) {
+      // Base wave
+      double y = midY;
       
-      canvas.drawLine(
-        Offset(x, centerY - height / 2),
-        Offset(x, centerY + height / 2),
-        paint,
-      );
+      if (level > 0.01) {
+        // Active Speech
+        double noise1 = math.sin(x * 0.1 + phase * 2);
+        double noise2 = math.sin(x * 0.3 - phase * 3);
+        double noise3 = math.sin(x * 0.05 + phase);
+        
+        double amplitude = level * size.height * 0.4;
+        y += (noise1 * amplitude) + (noise2 * amplitude * 0.5) + (noise3 * amplitude * 0.25);
+      } else {
+        // Idle
+        y += math.sin(x * 0.05 + phase) * 2;
+      }
+
+      path.lineTo(x, y);
     }
+
+    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(WaveformPainter oldDelegate) {
-    return true; 
-  }
+  bool shouldRepaint(SquigglyWaveformPainter oldDelegate) => true;
 }
 
 class BorderBeamPainter extends CustomPainter {
-  final double progress;
-  final Color color;
+  final Animation<double> animation;
   final double borderRadius;
 
   BorderBeamPainter({
-    required this.progress,
-    required this.color,
+    required this.animation,
     required this.borderRadius,
-  });
+  }) : super(repaint: animation);
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
 
-    // Create a sweep gradient that rotates
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..shader = SweepGradient(
-        colors: [Colors.transparent, color, Colors.transparent],
-        stops: const [0.0, 0.5, 1.0],
-        startAngle: 0.0,
-        endAngle: math.pi * 2,
-        transform: GradientRotation(progress * math.pi * 2),
-      ).createShader(rect);
+      ..strokeWidth = 1.0; // 1px border
 
+    // Rotating gradient
+    final gradient = SweepGradient(
+      colors: [
+        Colors.transparent,
+        Colors.white,
+        Colors.transparent,
+      ],
+      stops: const [0.0, 0.5, 1.0],
+      startAngle: 0.0,
+      endAngle: math.pi * 2,
+      transform: GradientRotation(animation.value * 2 * math.pi),
+    );
+
+    paint.shader = gradient.createShader(rect);
     canvas.drawRRect(rrect, paint);
   }
 
   @override
-  bool shouldRepaint(BorderBeamPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
-  }
+  bool shouldRepaint(BorderBeamPainter oldDelegate) => true;
 }

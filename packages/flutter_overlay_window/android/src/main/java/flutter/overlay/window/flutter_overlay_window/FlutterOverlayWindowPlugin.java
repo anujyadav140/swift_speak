@@ -95,7 +95,6 @@ public class FlutterOverlayWindowPlugin implements
                 startY = startPosition.getOrDefault("y", startY);
             }
 
-
             WindowSetup.width = width != null ? width : -1;
             WindowSetup.height = height != null ? height : -1;
             WindowSetup.enableDrag = enableDrag;
@@ -142,6 +141,27 @@ public class FlutterOverlayWindowPlugin implements
                 result.success(true);
             } else {
                 result.error("INVALID_ARGUMENT", "Text cannot be null", null);
+            }
+        } else if (call.method.equals("checkAccessibilityPermission")) {
+            result.success(checkAccessibilityPermission());
+        } else if (call.method.equals("showToast")) {
+            String message = call.argument("message");
+            if (message != null) {
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show();
+                result.success(true);
+            } else {
+                result.error("INVALID_ARGUMENT", "Message cannot be null", null);
+            }
+        } else if (call.method.equals("sendAudioLevel")) {
+            Double level = call.argument("level");
+            if (level != null) {
+                Intent intent = new Intent("com.example.swift_speak.AUDIO_LEVEL");
+                intent.putExtra("level", level.floatValue());
+                intent.setPackage(context.getPackageName());
+                context.sendBroadcast(intent);
+                result.success(true);
+            } else {
+                result.error("INVALID_ARGUMENT", "Level cannot be null", null);
             }
         } else {
             result.notImplemented();
@@ -195,6 +215,28 @@ public class FlutterOverlayWindowPlugin implements
             return Settings.canDrawOverlays(context);
         }
         return true;
+    }
+
+    private boolean checkAccessibilityPermission() {
+        int accessibilityEnabled = 0;
+        try {
+            accessibilityEnabled = Settings.Secure.getInt(
+                    context.getContentResolver(),
+                    android.provider.Settings.Secure.ACCESSIBILITY_ENABLED);
+        } catch (Settings.SettingNotFoundException e) {
+            Log.e("FlutterOverlayWindow",
+                    "Error finding setting, default accessibility to not found: " + e.getMessage());
+        }
+
+        if (accessibilityEnabled == 1) {
+            String settingValue = Settings.Secure.getString(
+                    context.getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (settingValue != null) {
+                return settingValue.contains(context.getPackageName() + "/.GlobalInputListenerService");
+            }
+        }
+        return false;
     }
 
     @Override

@@ -82,6 +82,16 @@ class FlutterOverlayWindow {
     }
   }
 
+  /// Check if accessibility permission is granted for the specific service
+  static Future<bool> isAccessibilityPermissionGranted() async {
+    try {
+      return await _channel.invokeMethod<bool>('checkAccessibilityPermission') ?? false;
+    } on PlatformException catch (error) {
+      log("$error");
+      return Future.value(false);
+    }
+  }
+
   /// Request overlay permission
   /// it will open the overlay settings page and return `true` once the permission granted.
   static Future<bool?> requestPermission() async {
@@ -174,6 +184,18 @@ class FlutterOverlayWindow {
   /// Insert text into the focused input field via Accessibility Service
   static Future<bool?> insertText(String text) async {
     final bool? _res = await _channel.invokeMethod('insertText', {'text': text});
+    return _res;
+  }
+
+  /// Show a native Android Toast message
+  static Future<bool?> showToast(String message) async {
+    final bool? _res = await _channel.invokeMethod('showToast', {'message': message});
+    return _res;
+  }
+
+  /// Send audio level to native side (for IME waveform)
+  static Future<bool?> sendAudioLevel(double level) async {
+    final bool? _res = await _channel.invokeMethod('sendAudioLevel', {'level': level});
     return _res;
   }
 }
