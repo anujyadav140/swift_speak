@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:swift_speak/features/auth/login_screen.dart';
 import 'package:swift_speak/features/home/home_screen.dart';
 import 'package:swift_speak/features/overlay/overlay_toolbar.dart';
 import 'features/ime/keyboard_page.dart';
+import 'package:swift_speak/features/permissions/permissions_screen.dart';
 import 'firebase_options.dart';
 import 'services/theme_service.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -102,13 +104,46 @@ class _MyAppState extends State<MyApp> {
           child: child!,
         );
       },
+      onGenerateRoute: (settings) {
+        if (settings.name == '/permissions') {
+          return MaterialPageRoute(builder: (context) => const PermissionsScreen());
+        }
+        return null;
+      },
       home: const AuthWrapper(),
     );
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  static const _channel = MethodChannel('com.example.swift_speak/app');
+
+  @override
+  void initState() {
+    super.initState();
+    _checkIntent();
+  }
+
+  Future<void> _checkIntent() async {
+    try {
+      final route = await _channel.invokeMethod<String>('checkIntent');
+      if (route == '/permissions' && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const PermissionsScreen()),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error checking intent: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -195,5 +230,3 @@ class _ImeAppState extends State<ImeApp> {
     );
   }
 }
-
-

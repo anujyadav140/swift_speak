@@ -132,8 +132,11 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () => _toggleAddForm(),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text("Add new"),
+                        icon: Icon(Icons.add, size: MediaQuery.of(context).size.width * 0.0495), // 18 -> 0.0495
+                        label: Text(
+                          "Add new",
+                          style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.0385), // 14 -> 0.0385
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isDark ? Colors.white : Colors.black,
                           foregroundColor: isDark ? Colors.black : Colors.white,
@@ -164,12 +167,12 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            "Add your own words and correct misspellings",
+                            "Add your own words & correct misspellings",
                             style: TextStyle(
                               color: Colors.black87,
-                              fontSize: 20,
+                              fontSize: MediaQuery.of(context).size.width * 0.055, // 20 -> 0.055
                               fontFamily: 'Serif', // Try to match the serif font
                               fontWeight: FontWeight.w500,
                             ),
@@ -190,11 +193,11 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       "Swift Speak learns your unique words and names — automatically or manually. Add personal terms, company jargon, or industry-specific lingo.",
                       style: TextStyle(
                         color: Colors.black54,
-                        fontSize: 14,
+                        fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
                         height: 1.5,
                       ),
                     ),
@@ -216,11 +219,17 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         backgroundColor: const Color(0xFF2D2D2D), // Dark button
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13), // Reduced by 20% (32->26, 16->13)
                       ),
-                      child: const Text("Add new word"),
+                      child: Text(
+                        "Add new word",
+                        style: TextStyle(
+                          fontSize: MediaQuery.of(context).size.width * 0.036, // Reduced by 20% (0.045 -> 0.036)
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -304,7 +313,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                                         ? "${term.original} → ${term.replacement}" 
                                         : term.original,
                                     style: TextStyle(
-                                      fontSize: 16,
+                                      fontSize: MediaQuery.of(context).size.width * 0.044, // 16 -> 0.044
                                       fontWeight: FontWeight.w500,
                                       color: textColor,
                                     ),
@@ -362,6 +371,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   }
 
   Widget _buildTab(String text, bool isSelected) {
+    final width = MediaQuery.of(context).size.width;
     return Column(
       children: [
         Text(
@@ -369,7 +379,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
           style: TextStyle(
             color: isSelected ? (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black) : Colors.grey,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 16,
+            fontSize: width * 0.044, // 16 -> 0.044
           ),
         ),
         if (isSelected)
@@ -384,6 +394,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   }
 
   Widget _buildChip(String label, {String? original, String? replacement}) {
+    final width = MediaQuery.of(context).size.width;
     return GestureDetector(
       onTap: () {
         if (original != null && replacement != null) {
@@ -401,9 +412,9 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
         ),
         child: Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.black87,
-            fontSize: 13,
+            fontSize: width * 0.03575, // 13 -> 0.03575
             fontWeight: FontWeight.w500,
           ),
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:swift_speak/models/snippet.dart';
 import 'package:swift_speak/services/snippet_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'add_snippet_form.dart';
 
 class SnippetsScreen extends StatefulWidget {
@@ -13,12 +14,29 @@ class SnippetsScreen extends StatefulWidget {
 class _SnippetsScreenState extends State<SnippetsScreen> {
   final SnippetService _snippetService = SnippetService();
   bool _showAddForm = false;
+  bool _showBanner = false; // Initialize to false to prevent flash if already closed
   String _initialShortcut = '';
   String _initialContent = '';
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   String? _selectedSnippetId;
   String? _editingSnippetId;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBannerStatus();
+  }
+
+  Future<void> _checkBannerStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final closed = prefs.getBool('snippets_banner_closed') ?? false;
+    if (mounted) {
+      setState(() {
+        _showBanner = !closed;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -114,8 +132,11 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () => _toggleAddForm(),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text("Add new"),
+                        icon: Icon(Icons.add, size: MediaQuery.of(context).size.width * 0.0495), // 18 -> 0.0495
+                        label: Text(
+                          "Add new",
+                          style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.0385), // 14 -> 0.0385
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isDark ? Colors.white : Colors.black,
                           foregroundColor: isDark ? Colors.black : Colors.white,
@@ -128,6 +149,100 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
                     ],
                   ),
           ),
+          
+          if (_showBanner && !_isSearching) ...[
+            const SizedBox(height: 24),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF9C4), // Light Yellow
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "Never retype the same thing twice.",
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: MediaQuery.of(context).size.width * 0.055,
+                            fontFamily: 'Times New Roman',
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () async {
+                          setState(() {
+                            _showBanner = false;
+                          });
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('snippets_banner_closed', true);
+                        },
+                        icon: const Icon(Icons.close, color: Colors.black54),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: MediaQuery.of(context).size.width * 0.032,
+                        height: 1.5,
+                        fontFamily: 'Times New Roman',
+                      ),
+                      children: const [
+                        TextSpan(text: "Save shortcuts for emails, links, or addresses. "),
+                        TextSpan(
+                          text: "Speak the shortcut and Swift Speak expands it instantly.",
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Column(
+                    children: [
+                      _buildExampleRow("Linkedin", "https://www.linkedin.com/in/john-doe-9b0139134/"),
+                      const SizedBox(height: 12),
+                      _buildExampleRow("Email", "john.doe@swiftspeak.ai"),
+                      const SizedBox(height: 12),
+                      _buildExampleRow("Calendly", "calendly.com/john-doe/30min"),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => _toggleAddForm(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2D2D2D),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
+                    ),
+                    child: Text(
+                      "Add new snippet",
+                      style: TextStyle(
+                        fontSize: MediaQuery.of(context).size.width * 0.036,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
           const SizedBox(height: 24),
 
           // Inline Add Form
@@ -217,7 +332,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
                                       child: Text(
                                         snippet.shortcut,
                                         style: TextStyle(
-                                          fontSize: 14,
+                                          fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
                                           fontWeight: FontWeight.bold,
                                           color: textColor,
                                         ),
@@ -227,7 +342,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
                                     Text(
                                       "→ ${snippet.content}",
                                       style: TextStyle(
-                                        fontSize: 16,
+                                        fontSize: MediaQuery.of(context).size.width * 0.044, // 16 -> 0.044
                                         color: textColor?.withOpacity(0.8),
                                       ),
                                     ),
@@ -288,6 +403,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
   }
 
   Widget _buildTab(String text, bool isSelected) {
+    final width = MediaQuery.of(context).size.width;
     return Column(
       children: [
         Text(
@@ -295,7 +411,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
           style: TextStyle(
             color: isSelected ? (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black) : Colors.grey,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 16,
+            fontSize: width * 0.044, // 16 -> 0.044
           ),
         ),
         if (isSelected)
@@ -305,6 +421,54 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
             width: 20,
             color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
           ),
+      ],
+    );
+  }
+
+  Widget _buildExampleRow(String shortcut, String content) {
+    final width = MediaQuery.of(context).size.width;
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Increased padding
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.black12),
+          ),
+          child: Text(
+            shortcut,
+            style: TextStyle(
+              color: Colors.black87, 
+              fontWeight: FontWeight.w500,
+              fontSize: width * 0.03, // Increased font size
+              fontFamily: 'Times New Roman', // Match banner font
+            ),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8.0),
+          child: Icon(Icons.arrow_forward, size: 20, color: Colors.black54), // Increased icon size
+        ),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Increased padding
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.black12),
+            ),
+            child: Text(
+              content,
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: width * 0.03, // Increased font size
+                fontFamily: 'Times New Roman', // Match banner font
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
       ],
     );
   }

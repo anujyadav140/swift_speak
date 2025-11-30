@@ -24,6 +24,46 @@ class GeminiService {
         '5. Apply corrections and snippet expansions strictly case-insensitively.\n'
       ),
     );
+
+    // Initialize separate model for classification (no system prompt interference)
+    _classifierModel = FirebaseVertexAI.instance.generativeModel(
+      model: 'gemini-2.0-flash',
+      generationConfig: GenerationConfig(
+        temperature: 0.0,
+        maxOutputTokens: 20,
+      ),
+    );
+  }
+
+  late final GenerativeModel _classifierModel;
+  final Map<String, String> _appCache = {};
+
+  Future<String> classifyApp(String packageName) async {
+    if (_appCache.containsKey(packageName)) return _appCache[packageName]!;
+
+    final prompt = [
+      Content.text(
+        'Classify this Android package name into one of these categories: MESSENGER, WORK, EMAIL, SOCIAL, OTHER.\n'
+        'Return ONLY the category name.\n'
+        'Package: "$packageName"'
+      )
+    ];
+
+    try {
+      final response = await _classifierModel.generateContent(prompt);
+      final category = response.text?.trim().toUpperCase() ?? "OTHER";
+      
+      // Basic validation to ensure it returned a valid category
+      final validCategories = ["MESSENGER", "WORK", "EMAIL", "SOCIAL", "OTHER"];
+      final finalCategory = validCategories.contains(category) ? category : "OTHER";
+      
+      _appCache[packageName] = finalCategory;
+      debugPrint("App Classified: $packageName -> $finalCategory");
+      return finalCategory;
+    } catch (e) {
+      debugPrint("Gemini Classify Error: $e");
+      return "OTHER";
+    }
   }
 
   /// Filters snippets to include only those whose shortcuts appear in the text.
@@ -50,7 +90,11 @@ class GeminiService {
     }).toList();
   }
 
-  Future<String> formatText(String text, {List<DictionaryTerm> userTerms = const [], List<Snippet> snippets = const []}) async {
+  Future<String> formatText(String text, {
+    List<DictionaryTerm> userTerms = const [], 
+    List<Snippet> snippets = const [],
+    String styleInstruction = ""
+  }) async {
     if (text.trim().isEmpty) return text;
 
     // 1. Dynamic Context Injection: Filter locally first
@@ -76,6 +120,10 @@ class GeminiService {
       contextPrompt += "\n";
     }
 
+    if (styleInstruction.isNotEmpty) {
+      contextPrompt += "$styleInstruction\n\n";
+    }
+
     // 3. Construct the final prompt
     final prompt = [
       Content.text(
@@ -84,7 +132,7 @@ class GeminiService {
       )
     ];
 
-    debugPrint("GeminiService: Sending prompt (Relevant Snippets: ${relevantSnippets.length}, Relevant Terms: ${relevantTerms.length})...");
+    debugPrint("GeminiService: Sending prompt (Relevant Snippets: ${relevantSnippets.length}, Relevant Terms: ${relevantTerms.length}, Style: ${styleInstruction.isNotEmpty})...");
 
     try {
       final response = await _model.generateContent(prompt);

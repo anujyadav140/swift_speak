@@ -74,6 +74,8 @@ class QuickTipsScreen extends StatelessWidget {
     required int delay,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final width = MediaQuery.of(context).size.width;
+
     return FadeInUp(
       delay: Duration(milliseconds: delay),
       child: Container(
@@ -100,7 +102,7 @@ class QuickTipsScreen extends StatelessWidget {
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.bold,
-                  fontSize: 18,
+                  fontSize: width * 0.0495, // 18 -> 0.0495
                 ),
               ),
             ),
@@ -111,13 +113,14 @@ class QuickTipsScreen extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+                      Icon(icon, size: width * 0.055, color: Theme.of(context).colorScheme.primary), // 20 -> 0.055
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           title,
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                fontSize: width * 0.044, // 16 -> 0.044 (approx for titleMedium)
                               ),
                         ),
                       ),
@@ -128,6 +131,7 @@ class QuickTipsScreen extends StatelessWidget {
                     description,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                          fontSize: width * 0.0385, // 14 -> 0.0385 (approx for bodyMedium)
                         ),
                   ),
                 ],

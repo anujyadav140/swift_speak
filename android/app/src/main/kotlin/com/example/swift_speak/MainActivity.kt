@@ -58,5 +58,22 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        // Handle app navigation intent
+        io.flutter.plugin.common.MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.swift_speak/app").setMethodCallHandler { call, result ->
+            if (call.method == "checkIntent") {
+                val route = intent?.getStringExtra("route")
+                result.success(route)
+                // Clear it so we don't handle it again on reload
+                intent?.removeExtra("route")
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }

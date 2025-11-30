@@ -11,6 +11,8 @@ import 'package:swift_speak/features/stats/stats_screen.dart';
 import 'package:swift_speak/features/dictionary/dictionary_screen.dart';
 import 'package:swift_speak/features/style/style_screen.dart';
 import 'package:swift_speak/features/snippets/snippets_screen.dart';
+import 'package:swift_speak/features/local_model/local_model_screen.dart';
+import 'package:swift_speak/features/permissions/permissions_screen.dart';
 
 import 'package:swift_speak/services/theme_service.dart';
 import '../../widgets/border_beam_painter.dart';
@@ -26,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   final ThemeService _themeService = ThemeService();
   bool _hasMicPermission = false;
+  bool _isCheckingPermissions = true; // Add loading state
 
   int _selectedIndex = 1;
   late AnimationController _beamController;
@@ -53,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (mounted) {
       setState(() {
         _hasMicPermission = hasPermission;
+        _isCheckingPermissions = false; // Check complete
       });
     }
   }
@@ -240,7 +244,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final height = size.height;
 
     // Responsive calculations
-    final gridHeight = height * 0.25;
+    // Responsive calculations
+    final gridHeight = height * 0.28; // Increased from 0.25 to fix overflow
     final cardPadding = width * 0.04;
     final iconPadding = width * 0.025;
     final largeIconSize = width * 0.07;
@@ -258,8 +263,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             "Welcome back, $userName 👋",
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: Colors.grey,
-                  fontWeight: FontWeight.w500,
-                  fontSize: width * 0.055,
+                  fontWeight: FontWeight.bold, // Changed to bold
+                  fontSize: titleFontSize,
                 ),
           ),
 
@@ -271,52 +276,111 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             height: gridHeight,
             child: Row(
               children: [
-                // Left Column: Quick Tips (Yellow)
+                // Left Column
                 Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const QuickTipsScreen()),
-                      );
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFC107), // Amber/Yellow
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.all(cardPadding),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: EdgeInsets.all(iconPadding),
+                  child: Column(
+                    children: [
+                      // Top Left: Quick Tips (Yellow)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const QuickTipsScreen()),
+                            );
+                          },
+                          child: Container(
+                            width: double.infinity,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              shape: BoxShape.circle,
+                              color: const Color(0xFFFFC107), // Amber/Yellow
+                              borderRadius: BorderRadius.circular(30),
                             ),
-                            child: Icon(Icons.lightbulb, color: Colors.white, size: largeIconSize),
-                          ),
-                          const Spacer(),
-                          Text(
-                            "Quick Tips",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: titleFontSize,
-                              fontWeight: FontWeight.bold,
+                            padding: EdgeInsets.all(cardPadding * 0.8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.all(iconPadding * 0.8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.lightbulb, color: Colors.black, size: smallIconSize),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  "Quick Tips",
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  "Learn how to use Swift Speak",
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: subtitleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          SizedBox(height: height * 0.005),
-                          Text(
-                            "Learn how to use Swift Speak",
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: subtitleFontSize,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+
+                      SizedBox(height: height * 0.02),
+
+                      // Bottom Left: Style (Teal/Cyan)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedIndex = 3;
+                            });
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEC407A), // Pink
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            padding: EdgeInsets.all(cardPadding * 0.8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.all(iconPadding * 0.8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.auto_awesome, color: Colors.white, size: smallIconSize),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  "Style",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  "Customize your tone",
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: subtitleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 
@@ -326,68 +390,109 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Expanded(
                   child: Column(
                     children: [
-                      // Top Right: Mic Permission (Purple)
+                      // Top Right: Permissions (Purple)
                       Expanded(
                         child: GestureDetector(
-                          onTap: _requestMicPermission,
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF9575CD), // Purple
-                              borderRadius: BorderRadius.circular(30),
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const PermissionsScreen()),
+                            );
+                            _checkMicPermission();
+                          },
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF9575CD), // Purple
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              padding: EdgeInsets.all(cardPadding * 0.8),
+                              child: Stack(
+                                children: [
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: EdgeInsets.all(iconPadding * 0.8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.3),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: _isCheckingPermissions
+                                            ? SizedBox(
+                                                width: smallIconSize,
+                                                height: smallIconSize,
+                                                child: const CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                                ),
+                                              )
+                                            : Icon(
+                                                Icons.verified_user,
+                                                color: Colors.white,
+                                                size: smallIconSize,
+                                              ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        "Permissions",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: titleFontSize,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        _isCheckingPermissions
+                                            ? "Checking..."
+                                            : (_hasMicPermission ? "Mic - Granted" : "Action Required"),
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: subtitleFontSize,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (!_isCheckingPermissions && !_hasMicPermission)
+                                    Positioned(
+                                      top: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.priority_high,
+                                          color: Colors.white,
+                                          size: smallIconSize * 0.8,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
-                            padding: EdgeInsets.all(cardPadding * 0.8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.all(iconPadding * 0.8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    _hasMicPermission ? Icons.mic : Icons.mic_off,
-                                    color: Colors.white,
-                                    size: smallIconSize,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  _hasMicPermission ? "Mic Active" : "Enable Mic",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: titleFontSize * 0.8,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  _hasMicPermission ? "Ready" : "Tap to allow",
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: subtitleFontSize * 0.9,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
                       ),
                       
                       SizedBox(height: height * 0.02),
                       
                       // Bottom Right: Dictionary (Blue Grey)
+                      // Bottom Right: Model Inference (Dark Grey)
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
-                            setState(() {
-                              _selectedIndex = 0;
-                            });
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const LocalModelScreen()),
+                            );
                           },
                           child: Container(
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF607D8B), // Blue Grey
+                              color: const Color(0xFF424242), // Dark Grey
                               borderRadius: BorderRadius.circular(30),
                             ),
                             padding: EdgeInsets.all(cardPadding * 0.8),
@@ -400,22 +505,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     color: Colors.white.withOpacity(0.3),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: Icon(Icons.book, color: Colors.white, size: smallIconSize),
+                                  child: Icon(Icons.memory, color: Colors.white, size: smallIconSize),
                                 ),
                                 const Spacer(),
                                 Text(
-                                  "Dictionary",
+                                  "AI Model",
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: titleFontSize * 0.8,
+                                    fontSize: titleFontSize,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 Text(
-                                  "Manage words",
+                                  "Local / Cloud",
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: subtitleFontSize * 0.9,
+                                    fontSize: subtitleFontSize,
+                                    fontWeight: FontWeight.bold, // Added bold
                                   ),
                                 ),
                               ],
@@ -427,6 +533,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ],
+            ),
+          ),
+
+          SizedBox(height: width * 0.04),
+
+          // Model Inference Card
+          // Dictionary Card
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedIndex = 0;
+              });
+            },
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: const Color(0xFF607D8B), // Blue Grey
+                borderRadius: BorderRadius.circular(30),
+              ),
+              padding: EdgeInsets.all(cardPadding),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(iconPadding),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.book, color: Colors.white, size: largeIconSize),
+                  ),
+                  SizedBox(width: width * 0.04),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Dictionary",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: titleFontSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        "Manage your personal dictionary",
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: subtitleFontSize,
+                          fontWeight: FontWeight.bold, // Added bold
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Icon(Icons.arrow_forward_ios, color: Colors.white54, size: smallIconSize),
+                ],
+              ),
             ),
           ),
         ],

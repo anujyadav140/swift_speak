@@ -20,6 +20,8 @@ public class SwiftSpeakIMEService extends InputMethodService {
     private FlutterView flutterView;
     private static final String CHANNEL = "com.example.swift_speak/ime";
 
+    private MethodChannel methodChannel;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -35,37 +37,43 @@ public class SwiftSpeakIMEService extends InputMethodService {
                         "imeMain"));
 
         // Setup Method Channel
-        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL)
-                .setMethodCallHandler(
-                        (call, result) -> {
-                            if (call.method.equals("commitText")) {
-                                String text = call.argument("text");
-                                android.util.Log.d("SwiftSpeakIME", "commitText: " + text);
-                                InputConnection ic = getCurrentInputConnection();
-                                if (ic != null) {
-                                    boolean success = ic.commitText(text, 1);
-                                    android.util.Log.d("SwiftSpeakIME", "ic.commitText result: " + success);
-                                    result.success(success);
-                                } else {
-                                    android.util.Log.e("SwiftSpeakIME", "InputConnection is null");
-                                    result.error("NO_INPUT_CONNECTION", "Input connection is null", null);
-                                }
-                            } else if (call.method.equals("switchKeyboard")) {
-                                InputMethodManager imeManager = (InputMethodManager) getSystemService(
-                                        INPUT_METHOD_SERVICE);
-                                if (imeManager != null) {
-                                    imeManager.showInputMethodPicker();
-                                }
-                                result.success(true);
-                            } else if (call.method.equals("openSettings")) {
-                                Intent intent = new Intent(SwiftSpeakIMEService.this, MainActivity.class);
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                startActivity(intent);
-                                result.success(true);
-                            } else {
-                                result.notImplemented();
-                            }
-                        });
+        methodChannel = new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL);
+        methodChannel.setMethodCallHandler(
+                (call, result) -> {
+                    if (call.method.equals("commitText")) {
+                        String text = call.argument("text");
+                        android.util.Log.d("SwiftSpeakIME", "commitText: " + text);
+                        InputConnection ic = getCurrentInputConnection();
+                        if (ic != null) {
+                            boolean success = ic.commitText(text, 1);
+                            android.util.Log.d("SwiftSpeakIME", "ic.commitText result: " + success);
+                            result.success(success);
+                        } else {
+                            android.util.Log.e("SwiftSpeakIME", "InputConnection is null");
+                            result.error("NO_INPUT_CONNECTION", "Input connection is null", null);
+                        }
+                    } else if (call.method.equals("switchKeyboard")) {
+                        InputMethodManager imeManager = (InputMethodManager) getSystemService(
+                                INPUT_METHOD_SERVICE);
+                        if (imeManager != null) {
+                            imeManager.showInputMethodPicker();
+                        }
+                        result.success(true);
+                    } else if (call.method.equals("openSettings")) {
+                        Intent intent = new Intent(SwiftSpeakIMEService.this, MainActivity.class);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                        result.success(true);
+                    } else if (call.method.equals("openPermissionsPage")) {
+                        Intent intent = new Intent(SwiftSpeakIMEService.this, MainActivity.class);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        intent.putExtra("route", "/permissions");
+                        startActivity(intent);
+                        result.success(true);
+                    } else {
+                        result.notImplemented();
+                    }
+                });
     }
 
     @Override
@@ -96,6 +104,12 @@ public class SwiftSpeakIMEService extends InputMethodService {
         android.util.Log.d("SwiftSpeakIME", "onStartInputView: Resuming Flutter Engine");
         if (flutterEngine != null) {
             flutterEngine.getLifecycleChannel().appIsResumed();
+        }
+
+        // Send package name to Flutter
+        if (info != null && info.packageName != null) {
+            android.util.Log.d("SwiftSpeakIME", "App Package: " + info.packageName);
+            methodChannel.invokeMethod("appPackageName", info.packageName);
         }
     }
 

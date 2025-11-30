@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../services/style_service.dart';
 import '../../widgets/border_beam_painter.dart';
 
 class StyleScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
   int? _expandedIndex;
   late final List<StyleCategory> _categories;
   late AnimationController _beamController;
+  final StyleService _styleService = StyleService();
 
   @override
   void initState() {
@@ -27,6 +29,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
     _categories = [
       StyleCategory(
         title: "DMs",
+        id: "MESSENGER", // Map to App Context
         bannerText: "This style applies in personal messengers",
         bannerIcons: [Icons.facebook, Icons.chat_bubble, Icons.telegram],
         bannerColors: [Colors.blue, Colors.greenAccent, Colors.lightBlue],
@@ -68,6 +71,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
       ),
       StyleCategory(
         title: "Work messages",
+        id: "WORK",
         bannerText: "This style applies in workplace messengers",
         bannerIcons: [Icons.work, Icons.group_work, Icons.business],
         bannerColors: [Colors.deepPurple, Colors.teal, Colors.blueGrey],
@@ -112,6 +116,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
       ),
       StyleCategory(
         title: "Email",
+        id: "EMAIL",
         bannerText: "This style applies in all major email apps",
         bannerIcons: [Icons.mail, Icons.email, Icons.mark_email_read],
         bannerColors: [Colors.red, Colors.blue, Colors.orange],
@@ -157,6 +162,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
       ),
       StyleCategory(
         title: "Other",
+        id: "OTHER",
         bannerText: "This style applies in all other apps",
         bannerIcons: [Icons.description, Icons.article, Icons.note],
         bannerColors: [Colors.blue, Colors.grey, Colors.amber],
@@ -194,6 +200,22 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
         ],
       ),
     ];
+    
+    _loadSavedStyle();
+  }
+
+  Future<void> _loadSavedStyle() async {
+    final currentCategory = _categories[_selectedCategoryIndex];
+    final savedStyle = await _styleService.getStyle(currentCategory.id);
+    
+    if (savedStyle != null && mounted) {
+      final index = currentCategory.options.indexWhere((opt) => opt.title == savedStyle['name']);
+      if (index != -1) {
+        setState(() {
+          _selectedStyleIndex = index;
+        });
+      }
+    }
   }
 
   @override
@@ -233,6 +255,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                             _selectedStyleIndex = 0; // Reset style selection on category change
                             _expandedIndex = null; // Collapse any expanded item
                           });
+                          _loadSavedStyle(); // Load saved style for the new category
                         },
                         child: _buildTab(category.title, _selectedCategoryIndex == index, isDark),
                       ),
@@ -278,7 +301,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                               Text(
                                 currentCategory.bannerText,
                                 style: GoogleFonts.ebGaramond(
-                                  fontSize: 16,
+                                  fontSize: MediaQuery.of(context).size.width * 0.044, // 16 -> 0.044
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black87,
                                 ),
@@ -286,7 +309,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                               Text(
                                 "Available on desktop in English. iOS and more languages coming soon",
                                 style: GoogleFonts.ebGaramond(
-                                  fontSize: 14,
+                                  fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
                                   color: Colors.black54,
                                 ),
                               ),
@@ -352,7 +375,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                                         Text(
                                           style.title,
                                           style: GoogleFonts.ebGaramond(
-                                            fontSize: 20,
+                                            fontSize: MediaQuery.of(context).size.width * 0.055, // 20 -> 0.055
                                             fontWeight: FontWeight.w600,
                                             color: isDark ? Colors.white : Colors.black87,
                                           ),
@@ -361,7 +384,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                                         Text(
                                           style.description.toUpperCase(),
                                           style: GoogleFonts.inter(
-                                            fontSize: 12,
+                                            fontSize: MediaQuery.of(context).size.width * 0.033, // 12 -> 0.033
                                             fontWeight: FontWeight.w600,
                                             color: isDark ? Colors.white54 : Colors.black54,
                                             letterSpacing: 1.0,
@@ -404,6 +427,12 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                                                   setState(() {
                                                     _selectedStyleIndex = index;
                                                   });
+                                                  // Save the selected style
+                                                  _styleService.saveStyle(
+                                                    currentCategory.id, 
+                                                    style.title, 
+                                                    style.description
+                                                  );
                                                 },
                                                 child: CustomPaint(
                                                   foregroundPainter: isSelected 
@@ -439,7 +468,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                                                         Text(
                                                           isSelected ? "Selected" : "Select",
                                                           style: GoogleFonts.ebGaramond(
-                                                            fontSize: 16,
+                                                            fontSize: MediaQuery.of(context).size.width * 0.044, // 16 -> 0.044
                                                             fontWeight: FontWeight.w600,
                                                             color: isDark ? Colors.white : Colors.black,
                                                           ),
@@ -478,7 +507,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
           Text(
             text,
             style: GoogleFonts.ebGaramond(
-              fontSize: 18,
+              fontSize: MediaQuery.of(context).size.width * 0.0495, // 18 -> 0.0495
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               color: isSelected 
                   ? (isDark ? Colors.white : Colors.black) 
@@ -513,6 +542,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
   }
 
   Widget _buildStyleContent(StyleOption style, bool isDark, String categoryTitle) {
+    final width = MediaQuery.of(context).size.width;
     if (style.recipient != null) {
       // Email Layout
       return Column(
@@ -526,7 +556,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
             child: Text(
               "To: ${style.recipient}",
               style: GoogleFonts.ebGaramond(
-                fontSize: 16,
+                fontSize: width * 0.044, // 16 -> 0.044
                 color: Colors.grey,
               ),
             ),
@@ -536,7 +566,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
             text: TextSpan(
               children: _buildTextSpans(style, isDark),
               style: GoogleFonts.ebGaramond(
-                fontSize: 16,
+                fontSize: width * 0.044, // 16 -> 0.044
                 height: 1.4,
                 color: isDark ? Colors.white : Colors.black87,
               ),
@@ -574,7 +604,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                       style.senderName!,
                       style: GoogleFonts.ebGaramond(
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontSize: width * 0.044, // 16 -> 0.044
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
@@ -582,7 +612,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                     Text(
                       style.time!,
                       style: GoogleFonts.ebGaramond(
-                        fontSize: 14,
+                        fontSize: width * 0.0385, // 14 -> 0.0385
                         color: Colors.grey,
                       ),
                     ),
@@ -593,7 +623,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                   text: TextSpan(
                     children: _buildTextSpans(style, isDark),
                     style: GoogleFonts.ebGaramond(
-                      fontSize: 16,
+                      fontSize: width * 0.044, // 16 -> 0.044
                       height: 1.4,
                       color: isDark ? Colors.white : Colors.black87,
                     ),
@@ -610,7 +640,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
         text: TextSpan(
           children: _buildTextSpans(style, isDark),
           style: GoogleFonts.ebGaramond(
-            fontSize: 16,
+            fontSize: width * 0.044, // 16 -> 0.044
             height: 1.4,
             color: isDark ? Colors.white : Colors.black87,
           ),
@@ -618,31 +648,53 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
       );
     } else {
       // Default DM Bubble Layout
-      return Align(
-        alignment: Alignment.bottomLeft,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.grey[800] : Colors.white,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-              bottomRight: Radius.circular(16),
-              bottomLeft: Radius.circular(4),
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: style.avatarColor,
+              shape: BoxShape.circle,
             ),
-            border: Border.all(color: Colors.grey.withOpacity(0.2)),
-          ),
-          child: RichText(
-            text: TextSpan(
-              children: _buildTextSpans(style, isDark),
-              style: GoogleFonts.ebGaramond(
-                fontSize: 18,
-                height: 1.4,
-                color: isDark ? Colors.white : Colors.black87,
+            alignment: Alignment.center,
+            child: Text(
+              style.title[0].toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
             ),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[800] : Colors.white,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                  bottomLeft: Radius.circular(4),
+                ),
+                border: Border.all(color: Colors.grey.withOpacity(0.2)),
+              ),
+              child: RichText(
+                text: TextSpan(
+                  children: _buildTextSpans(style, isDark),
+                  style: GoogleFonts.ebGaramond(
+                    fontSize: width * 0.0495, // 18 -> 0.0495
+                    height: 1.4,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     }
   }
@@ -685,6 +737,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
 
 class StyleCategory {
   final String title;
+  final String id; // Added for context mapping
   final String bannerText;
   final List<IconData> bannerIcons;
   final List<Color> bannerColors;
@@ -692,6 +745,7 @@ class StyleCategory {
 
   StyleCategory({
     required this.title,
+    required this.id,
     required this.bannerText,
     required this.bannerIcons,
     required this.bannerColors,

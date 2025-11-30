@@ -28,6 +28,7 @@ class StatsScreen extends StatelessWidget {
                   "You've been Swiftly Speaking 🎉",
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
+                        fontSize: MediaQuery.of(context).size.width * 0.066, // 24 -> 0.066
                       ),
                   textAlign: TextAlign.center,
                 ),
@@ -36,6 +37,7 @@ class StatsScreen extends StatelessWidget {
                   "Here's a personal stats of your productivity with Swift Speak.",
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                        fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
                       ),
                   textAlign: TextAlign.center,
                 ),
@@ -95,6 +97,7 @@ class StatsScreen extends StatelessWidget {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? Colors.grey[900] : Colors.grey[100];
+    final width = MediaQuery.of(context).size.width;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -112,6 +115,7 @@ class StatsScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
                   letterSpacing: 1.2,
+                  fontSize: width * 0.033, // approx 12 -> 0.033
                 ),
           ),
           const SizedBox(height: 12),
@@ -119,7 +123,7 @@ class StatsScreen extends StatelessWidget {
             text: TextSpan(
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 20, // Slightly smaller to fit "words per minute"
+                    fontSize: width * 0.055, // 20 -> 0.055
                   ),
               children: [
                 TextSpan(text: value),
@@ -133,6 +137,7 @@ class StatsScreen extends StatelessWidget {
             subtitle,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+                  fontSize: width * 0.033, // approx 12 -> 0.033
                 ),
           ),
         ],

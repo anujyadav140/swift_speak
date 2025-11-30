@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../services/speech_service.dart';
 import '../../services/gemini_service.dart';
 import '../../services/dictionary_service.dart';
 import '../../services/snippet_service.dart';
+import '../../services/style_service.dart';
 import '../../models/snippet.dart';
 import '../../widgets/border_beam_painter.dart';
 
@@ -16,12 +19,13 @@ class KeyboardPage extends StatefulWidget {
   State<KeyboardPage> createState() => _KeyboardPageState();
 }
 
-class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMixin {
+class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMixin, WidgetsBindingObserver {
   static const _channel = MethodChannel('com.example.swift_speak/ime');
   final SpeechService _speechService = SpeechService();
   final GeminiService _geminiService = GeminiService();
   final DictionaryService _dictionaryService = DictionaryService();
   final SnippetService _snippetService = SnippetService();
+  final StyleService _styleService = StyleService();
   
   bool _isListening = false;
   double _soundLevel = 0.0;
@@ -30,7 +34,9 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   String _accumulatedText = ""; // Text from previous sessions
   String _currentText = "";     // Text from current session
   String _status = "READY";
+  String _appContext = "";      // Detected app type
   bool _shouldBeListening = false; // User intent to listen
+  bool _hasPermission = false;
   List<DictionaryTerm> _userTerms = [];
   List<Snippet> _snippets = [];
   
@@ -39,7 +45,7 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   StreamSubscription? _soundLevelSubscription;
   StreamSubscription? _statusSubscription;
   StreamSubscription? _dictionarySubscription;
-  StreamSubscription? _snippetsSubscription;
+  StreamSubscription? _snippetSubscription;
 
   // Animation controllers
   late AnimationController _animationController;
@@ -47,6 +53,8 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkPermission();
     _initializeSpeech();
     _subscribeToDictionary();
     _subscribeToSnippets();
@@ -56,17 +64,57 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
       vsync: this,
       duration: const Duration(milliseconds: 5500), 
     )..repeat();
+    
+    _channel.setMethodCallHandler(_handleMethodCall);
+  }
+
+  Future<dynamic> _handleMethodCall(MethodCall call) async {
+    if (call.method == "appPackageName") {
+      final packageName = call.arguments as String;
+      debugPrint("Received package name: $packageName");
+      final type = await _geminiService.classifyApp(packageName);
+      if (mounted) {
+        setState(() {
+          _appContext = type;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _animationController.dispose();
     _resultSubscription?.cancel();
     _soundLevelSubscription?.cancel();
     _statusSubscription?.cancel();
     _dictionarySubscription?.cancel();
-    _snippetsSubscription?.cancel();
+    _snippetSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermission();
+    }
+  }
+
+  Future<void> _checkPermission() async {
+    final status = await Permission.microphone.status;
+    if (mounted) {
+      setState(() {
+        _hasPermission = status.isGranted;
+      });
+    }
+  }
+
+  Future<void> _openPermissionsPage() async {
+    try {
+      await _channel.invokeMethod('openPermissionsPage');
+    } catch (e) {
+      debugPrint("Failed to open permissions page: $e");
+    }
   }
 
   void _subscribeToDictionary() {
@@ -80,7 +128,7 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   }
 
   void _subscribeToSnippets() {
-    _snippetsSubscription = _snippetService.getSnippets().listen((snippets) {
+    _snippetSubscription = _snippetService.getSnippets().listen((snippets) {
       if (mounted) {
         setState(() {
           _snippets = snippets;
@@ -103,6 +151,11 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   }
 
   void _toggleListening() async {
+    if (!_hasPermission) {
+      _openPermissionsPage();
+      return;
+    }
+
     if (_shouldBeListening) {
       // User clicked Stop -> Process with Gemini
       await _stopListeningAndProcess();
@@ -120,6 +173,11 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   }
 
   Future<void> _startListening() async {
+    if (!_hasPermission) {
+      _openPermissionsPage();
+      return;
+    }
+
     // 1. Result Listener
     _resultSubscription?.cancel();
     _resultSubscription = _speechService.onResult.listen((result) {
@@ -233,7 +291,20 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
 
     // 5. Process
     setState(() => _status = "FORMATTING...");
-    String formattedText = await _geminiService.formatText(fullText, userTerms: _userTerms, snippets: _snippets);
+    
+    // Get style instruction based on app context
+    String styleInstruction = "";
+    if (_appContext.isNotEmpty) {
+      styleInstruction = await _styleService.getStyleInstruction(_appContext);
+      debugPrint("Applying style: $styleInstruction");
+    }
+
+    String formattedText = await _geminiService.formatText(
+      fullText, 
+      userTerms: _userTerms, 
+      snippets: _snippets,
+      styleInstruction: styleInstruction
+    );
 
     // 6. Commit
     await _commitText(formattedText);
@@ -284,92 +355,116 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
     const Color bgColor = Colors.black;
     const Color accentColor = Colors.white;
     
-
-
     return Scaffold(
       backgroundColor: bgColor,
       resizeToAvoidBottomInset: false,
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Top Row: Status & Settings
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _status,
-                  style: const TextStyle(
-                    color: accentColor,
-                    fontSize: 14,
-                    letterSpacing: 1.5,
-                    fontFamily: 'Roboto',
-                    fontWeight: FontWeight.bold,
+      body: !_hasPermission 
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.mic_off, size: 48, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Microphone Access Required",
+                    style: GoogleFonts.ebGaramond(
+                      fontSize: 18,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                IconButton(
-                  onPressed: _openSettings,
-                  icon: const Icon(Icons.settings, color: accentColor),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 20),
-
-            // 2. Digital Waveform (Center)
-            Expanded(
-              child: Center(
-                child: _isListening 
-                  ? SizedBox(
-                      width: double.infinity,
-                      height: 100,
-                      child: CustomPaint(
-                        painter: DigitalWaveformPainter(
-                          level: _soundLevel,
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _openPermissionsPage,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text("Grant Access"),
+                  ),
+                ],
+              ),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. Top Row: Status & Settings
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _appContext.isNotEmpty ? "$_appContext • $_status" : _status,
+                        style: const TextStyle(
                           color: accentColor,
-                          animation: _animationController,
+                          fontSize: 14,
+                          letterSpacing: 1.5,
+                          fontFamily: 'Roboto',
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    )
-                  : const SizedBox.shrink(),
-              ),
-            ),
+                      IconButton(
+                        onPressed: _openSettings,
+                        icon: const Icon(Icons.settings, color: accentColor),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 20),
 
-            // 4. Bottom Controls: Keyboard, Mic
-            Padding(
-              padding: const EdgeInsets.only(bottom: 40.0),
-              child: SizedBox(
-                height: 80, // Fixed height for the control area
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Left: Keyboard Switcher
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 32.0),
-                        child: IconButton(
-                          onPressed: _switchKeyboard,
-                          icon: const Icon(Icons.keyboard, color: accentColor),
-                          iconSize: 28,
-                        ),
+                  // 2. Digital Waveform (Center)
+                  Expanded(
+                    child: Center(
+                      child: _isListening 
+                        ? SizedBox(
+                            width: double.infinity,
+                            height: 100,
+                            child: CustomPaint(
+                              painter: DigitalWaveformPainter(
+                                level: _soundLevel,
+                                color: accentColor,
+                                animation: _animationController,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                    ),
+                  ),
+
+                  // 4. Bottom Controls: Keyboard, Mic
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 40.0),
+                    child: SizedBox(
+                      height: 80, // Fixed height for the control area
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Left: Keyboard Switcher
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 32.0),
+                              child: IconButton(
+                                onPressed: _switchKeyboard,
+                                icon: const Icon(Icons.keyboard, color: accentColor),
+                                iconSize: 28,
+                              ),
+                            ),
+                          ),
+
+                          // Center: Mic Button
+                          MicButton(
+                            isListening: _isListening,
+                            onTap: _toggleListening,
+                            animationController: _animationController,
+                          ),
+                        ],
                       ),
                     ),
-
-                    // Center: Mic Button
-                    MicButton(
-                      isListening: _isListening,
-                      onTap: _toggleListening,
-                      animationController: _animationController,
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -480,5 +575,3 @@ class DigitalWaveformPainter extends CustomPainter {
   @override
   bool shouldRepaint(DigitalWaveformPainter oldDelegate) => true;
 }
-
-
