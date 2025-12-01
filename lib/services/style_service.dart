@@ -28,14 +28,25 @@ class StyleService {
     if (name != null && desc != null) {
       return {'name': name, 'description': desc};
     }
-    return null; // Return null to use default (Formal/Standard)
+    // Default to Formal if nothing saved
+    return {
+      'name': 'Formal.', 
+      'description': 'Standard capitalization & punctuation. Ensure question marks are used for questions.'
+    };
   }
   
   // Helper to get the instruction string directly
   Future<String> getStyleInstruction(String category) async {
     final style = await getStyle(category);
     if (style != null) {
-      return "STYLE: ${style['name']} (${style['description']})";
+      String description = style['description']!;
+      // Hotfix: Override old descriptions
+      if (style['name'] == 'Formal.') {
+        description = "Standard capitalization & punctuation. Ensure question marks are used for questions.";
+      } else if (style['name'] == 'Casual') {
+        description = "Sentence case (capitalize first letter). Basic punctuation only (periods/question marks). Avoid formal punctuation like semicolons.";
+      }
+      return "STYLE: ${style['name']} ($description)";
     }
     return ""; // No specific style instruction
   }

@@ -14,8 +14,9 @@ import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.dart.DartExecutor;
 import io.flutter.plugin.common.MethodChannel;
 
-public class SwiftSpeakIMEService extends InputMethodService {
+import io.flutter.embedding.android.RenderMode;
 
+public class SwiftSpeakIMEService extends InputMethodService {
     private FlutterEngine flutterEngine;
     private FlutterView flutterView;
     private static final String CHANNEL = "com.example.swift_speak/ime";
@@ -79,6 +80,12 @@ public class SwiftSpeakIMEService extends InputMethodService {
     @Override
     public View onCreateInputView() {
         android.util.Log.d("SwiftSpeakIME", "onCreateInputView: Creating Flutter View");
+
+        // Detach existing view if present to prevent engine confusion
+        if (flutterView != null) {
+            flutterView.detachFromFlutterEngine();
+        }
+
         // Calculate height (e.g. 350dp)
         int height = (int) (350 * getResources().getDisplayMetrics().density);
 
@@ -88,8 +95,9 @@ public class SwiftSpeakIMEService extends InputMethodService {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 height));
 
-        // Create FlutterView and attach to engine
-        flutterView = new FlutterView(this);
+        // Create FlutterView with Texture Mode to avoid SurfaceView Z-ordering/blank
+        // issues
+        flutterView = new FlutterView(this, RenderMode.texture);
         flutterView.attachToFlutterEngine(flutterEngine);
 
         layout.addView(flutterView, new FrameLayout.LayoutParams(
@@ -106,20 +114,29 @@ public class SwiftSpeakIMEService extends InputMethodService {
             flutterEngine.getLifecycleChannel().appIsResumed();
         }
 
+        // Force redraw to prevent blank screen
+        if (flutterView != null) {
+            flutterView.invalidate();
+        }
+
         // Send package name to Flutter
         if (info != null && info.packageName != null) {
             android.util.Log.d("SwiftSpeakIME", "App Package: " + info.packageName);
             methodChannel.invokeMethod("appPackageName", info.packageName);
         }
+
+        // Force refresh settings (Style/Model)
+        methodChannel.invokeMethod("refreshSettings", null);
     }
 
     @Override
     public void onFinishInputView(boolean finishingInput) {
         super.onFinishInputView(finishingInput);
-        android.util.Log.d("SwiftSpeakIME", "onFinishInputView: Pausing Flutter Engine");
-        if (flutterEngine != null) {
-            flutterEngine.getLifecycleChannel().appIsPaused();
-        }
+        android.util.Log.d("SwiftSpeakIME", "onFinishInputView: Keeping Flutter Engine Running");
+        // Commenting out pause to prevent blank screen on resume
+        // if (flutterEngine != null) {
+        // flutterEngine.getLifecycleChannel().appIsPaused();
+        // }
     }
 
     @Override

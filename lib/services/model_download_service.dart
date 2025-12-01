@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:dio/dio.dart';
+import 'dart:isolate';
+import 'dart:ui';
+import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 
@@ -9,13 +11,11 @@ class ModelDownloadService {
   factory ModelDownloadService() => _instance;
   ModelDownloadService._internal();
 
-  final Dio _dio = Dio();
-  CancelToken? _cancelToken;
-  
   // State
   bool _isDownloading = false;
   double _progress = 0.0;
   String? _currentFileName;
+  String? _taskId;
   
   // Speed & ETA calculation
   int? _totalBytes;
@@ -23,6 +23,7 @@ class ModelDownloadService {
   double _lastProgress = 0.0;
   double _speed = 0.0; // B/s
   Duration? _timeRemaining;
+  Timer? _pollingTimer;
 
   // Stream for UI updates
   final _controller = StreamController<DownloadStatus>.broadcast();
@@ -33,6 +34,86 @@ class ModelDownloadService {
   String? get currentFileName => _currentFileName;
   double get speed => _speed;
   Duration? get timeRemaining => _timeRemaining;
+
+  // Background Isolate Communication
+  final ReceivePort _port = ReceivePort();
+
+  bool _isInitialized = false;
+
+  void init() {
+    if (_isInitialized) return;
+    _bindBackgroundIsolate();
+    FlutterDownloader.registerCallback(downloadCallback);
+    _isInitialized = true;
+  }
+
+  void _bindBackgroundIsolate() {
+    bool isSuccess = IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
+    if (!isSuccess) {
+      _unbindBackgroundIsolate();
+      _bindBackgroundIsolate();
+      return;
+    }
+    _port.listen((dynamic data) {
+      String id = data[0];
+      int statusIdx = data[1];
+      int progress = data[2];
+      
+      if (_taskId == id) {
+        final double newProgress = progress / 100.0;
+        
+        // Calculate Speed & ETA
+        final now = DateTime.now();
+        if (_lastUpdateTime != null) {
+          final timeDelta = now.difference(_lastUpdateTime!).inMilliseconds / 1000.0;
+          // Only update speed if enough time has passed (e.g. > 500ms) or significant progress
+          // This prevents jitter if callbacks are too fast
+          if (timeDelta > 0.5 && _totalBytes != null && newProgress > _lastProgress) {
+            final progressDelta = newProgress - _lastProgress;
+            final bytesDelta = progressDelta * _totalBytes!;
+            final bytesPerSecond = bytesDelta / timeDelta;
+            
+            // Simple smoothing
+            _speed = (_speed == 0) ? bytesPerSecond : (_speed * 0.7) + (bytesPerSecond * 0.3);
+            
+            if (newProgress < 1.0 && _speed > 0) {
+              final remainingBytes = (1.0 - newProgress) * _totalBytes!;
+              final remainingSeconds = remainingBytes / _speed;
+              _timeRemaining = Duration(seconds: remainingSeconds.round());
+            }
+            
+            _lastProgress = newProgress;
+            _lastUpdateTime = now;
+          }
+        } else {
+           _lastUpdateTime = now;
+           _lastProgress = newProgress;
+        }
+
+        _progress = newProgress;
+        
+        if (statusIdx == DownloadTaskStatus.complete.index) {
+          _isDownloading = false;
+          _progress = 1.0;
+          _speed = 0.0;
+          _timeRemaining = null;
+          _notifyListeners();
+        } else if (statusIdx == DownloadTaskStatus.failed.index || statusIdx == DownloadTaskStatus.canceled.index) {
+          _isDownloading = false;
+          _speed = 0.0;
+          _timeRemaining = null;
+          _notifyListeners();
+        } else if (statusIdx == DownloadTaskStatus.running.index) {
+           _isDownloading = true;
+           _notifyListeners();
+        }
+      }
+    });
+  }
+
+  void _unbindBackgroundIsolate() {
+    IsolateNameServer.removePortNameMapping('downloader_send_port');
+  }
 
   Future<void> downloadModel({
     required String url,
@@ -49,88 +130,65 @@ class ModelDownloadService {
     _lastUpdateTime = DateTime.now();
     _speed = 0.0;
     _timeRemaining = null;
-    _cancelToken = CancelToken();
     
     _notifyListeners();
 
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final savePath = '${dir.path}/$fileName';
-
-      await _dio.download(
-        url,
-        savePath,
-        cancelToken: _cancelToken,
-        onReceiveProgress: (received, total) {
-          if (total != -1) {
-            final double newProgress = received / total;
-            _totalBytes = total; // Update total bytes from actual response if available
-
-            // Calculate Speed & ETA
-            final now = DateTime.now();
-            if (_lastUpdateTime != null) {
-              final timeDelta = now.difference(_lastUpdateTime!).inMilliseconds / 1000.0;
-              if (timeDelta > 0.5) { // Update every 0.5s
-                final progressDelta = newProgress - _lastProgress;
-                final bytesDelta = progressDelta * total;
-                
-                final bytesPerSecond = bytesDelta / timeDelta;
-                _speed = bytesPerSecond; // B/s
-                
-                if (newProgress < 1.0 && _speed > 0) {
-                  final remainingBytes = (1.0 - newProgress) * total;
-                  final remainingSeconds = remainingBytes / bytesPerSecond;
-                  _timeRemaining = Duration(seconds: remainingSeconds.round());
-                }
-                
-                _lastProgress = newProgress;
-                _lastUpdateTime = now;
-              }
-            } else {
-              _lastUpdateTime = now;
-              _lastProgress = newProgress;
-            }
-
-            _progress = newProgress;
-            _notifyListeners();
-          }
-        },
-      );
-
-      _isDownloading = false;
-      _progress = 1.0;
-      _speed = 0.0;
-      _timeRemaining = null;
-      _cancelToken = null;
-      _notifyListeners();
-
-    } catch (e) {
-      if (e is DioException && CancelToken.isCancel(e)) {
-        debugPrint("Download cancelled");
-      } else {
-        debugPrint("Download failed: $e");
-      }
-      _isDownloading = false;
-      _speed = 0.0;
-      _timeRemaining = null;
-      _cancelToken = null;
-      _notifyListeners();
+    final dir = await getApplicationDocumentsDirectory();
+    
+    // Check if file exists and delete it
+    final file = File('${dir.path}/$fileName');
+    if (await file.exists()) {
+      await file.delete();
     }
+
+    _taskId = await FlutterDownloader.enqueue(
+      url: url,
+      savedDir: dir.path,
+      fileName: fileName,
+      showNotification: true,
+      openFileFromNotification: false,
+      saveInPublicStorage: false,
+    );
+    // No polling needed anymore
   }
 
   Future<void> cancelDownload() async {
-    if (_isDownloading && _cancelToken != null) {
-      _cancelToken!.cancel();
+    if (_isDownloading && _taskId != null) {
+      await FlutterDownloader.cancel(taskId: _taskId!);
       _isDownloading = false;
-      _cancelToken = null;
       _notifyListeners();
     }
   }
 
-  Future<bool> isModelDownloaded(String fileName) async {
+  Future<void> pauseDownload() async {
+    if (_isDownloading && _taskId != null) {
+      await FlutterDownloader.pause(taskId: _taskId!);
+      _isDownloading = false;
+      _notifyListeners();
+    }
+  }
+
+  Future<void> resumeDownload() async {
+    if (!_isDownloading && _taskId != null) {
+      final newTaskId = await FlutterDownloader.resume(taskId: _taskId!);
+      _taskId = newTaskId;
+      _isDownloading = true;
+      _notifyListeners();
+    }
+  }
+
+  Future<bool> isModelDownloaded(String fileName, {int? expectedBytes}) async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/$fileName');
-    return await file.exists();
+    
+    if (!await file.exists()) return false;
+    
+    if (expectedBytes != null) {
+      final length = await file.length();
+      return length == expectedBytes;
+    }
+    
+    return true;
   }
   
   Future<void> deleteModel(String fileName) async {
@@ -166,4 +224,11 @@ class DownloadStatus {
     this.speed = 0.0,
     this.timeRemaining,
   });
+}
+
+// Top-level callback
+@pragma('vm:entry-point')
+void downloadCallback(String id, int status, int progress) {
+  final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
+  send?.send([id, status, progress]);
 }

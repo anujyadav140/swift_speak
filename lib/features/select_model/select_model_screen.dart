@@ -17,13 +17,13 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
   CancelToken? _cancelToken;
 
   // Placeholder URL - REPLACE WITH ACTUAL FIREBASE STORAGE URL
-  static const String _gemmaUrl = "https://huggingface.co/bartowski/gemma-2-2b-it-abliterated-GGUF/resolve/main/gemma-2-2b-it-abliterated-Q4_K_M.gguf?download=true"; 
-  static const String _gemmaFileName = "gemma-2b.bin";
+  static const String _gemmaUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf?download=true";
+  static const String _gemmaFileName = "llama-3.2-1b-q4.gguf";
 
   final Map<String, dynamic> _gemmaModel = {
-    'name': 'Gemma 2B',
-    'size': '1.5 GB',
-    'description': 'Lightweight model by Google, optimized for mobile.',
+    'name': 'Llama 3.2 1B Q4',
+    'size': '808 MB',
+    'description': 'Lightweight model by Meta, optimized for mobile.',
     'isDownloaded': false,
     'isDownloading': false,
     'progress': 0.0,
@@ -87,7 +87,7 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
       if (mounted) {
         setState(() {
           _gemmaModel['isDownloaded'] = false;
-          if (_activeModel == 'Gemma 2B') {
+          if (_activeModel == 'Llama 3.2 1B Q4') {
             _activeModel = 'Gemini 2.0 Flash Lite'; // Revert to default
             _saveModelPreference('Gemini 2.0 Flash Lite');
           }
@@ -189,7 +189,7 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
           const SizedBox(height: 16),
           _buildModelCard(
             model: _gemmaModel,
-            isActive: _activeModel == 'Gemma 2B',
+            isActive: _activeModel == 'Llama 3.2 1B Q4',
             isDark: isDark,
             textColor: textColor,
             isDownloadable: true,

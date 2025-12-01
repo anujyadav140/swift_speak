@@ -10,6 +10,8 @@ import '../../services/speech_service.dart';
 import '../../services/gemini_service.dart';
 import '../../services/snippet_service.dart';
 import '../../models/snippet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/local_llm_service.dart';
 
 class OverlayToolbar extends StatefulWidget {
   const OverlayToolbar({super.key});
@@ -19,30 +21,23 @@ class OverlayToolbar extends StatefulWidget {
 }
 
 class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStateMixin {
-  bool _isExpanded = false;
-  bool _isInputActive = false;
-  late AnimationController _animationController;
+  // ... existing state ...
   
   // Services
   final SpeechService _speechService = SpeechService();
   final GeminiService _geminiService = GeminiService();
   final SnippetService _snippetService = SnippetService();
   final DictionaryService _dictionaryService = DictionaryService();
-  
-  // STT State
+  final LocalLLMService _localLLMService = LocalLLMService();
+
+  // State
+  bool _isExpanded = false;
+  bool _isInputActive = false;
+  late AnimationController _animationController;
   bool _isRecording = false;
-  
-  // Waveform State
   double _latestSoundLevel = 0.0;
-  
-  // AI Vars
-  // late GenerativeModel _model; // Removed direct usage
-  
-  // Deduplication vars
   String _lastInjectedText = '';
   DateTime _lastInjectionTime = DateTime.fromMillisecondsSinceEpoch(0);
-  
-  // Data
   List<Snippet> _snippets = [];
   List<DictionaryTerm> _userTerms = [];
 
@@ -56,29 +51,21 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
   @override
   void initState() {
     super.initState();
-    // Single controller for beam and waveform animation
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
 
-    // _initVertexAI(); // Handled by GeminiService
     _setupSpeechListeners();
     _setupDataListeners();
 
-    // Listen to data shared from the main app
     FlutterOverlayWindow.overlayListener.listen((event) {
       if (event is bool) {
         if (event) {
-          // Input Active: Auto Expand first
           setState(() {
-            debugPrint("OverlayToolbar: Received Input Active Event");
             _isExpanded = true;
-            // Resize immediately for expansion
             FlutterOverlayWindow.resizeOverlay(260, 80, true);
           });
-          
-          // Delay beam activation until expansion finishes (250ms)
           Future.delayed(const Duration(milliseconds: 250), () {
             if (mounted) {
               setState(() {
@@ -87,70 +74,13 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
             }
           });
         } else {
-          // Input Inactive: Collapse and hide beam
           setState(() {
             _isInputActive = false;
             _isExpanded = false;
-            // Resize back to collapsed state
             FlutterOverlayWindow.resizeOverlay(70, 120, true);
           });
         }
-      } else {
-        debugPrint("OverlayToolbar: Received Event: $event");
       }
-    });
-  }
-
-  // void _initVertexAI() {
-  //   // Initialize Gemini 1.5 Flash for speed
-  //   _model = FirebaseVertexAI.instance.generativeModel(model: 'gemini-2.0-flash-lite');
-  // }
-
-  void _setupDataListeners() {
-    _snippetsSubscription = _snippetService.getSnippets().listen((snippets) {
-      if (mounted) {
-        setState(() {
-          _snippets = snippets;
-        });
-      }
-    });
-    _dictionarySubscription = _dictionaryService.getTerms().listen((terms) {
-      if (mounted) {
-        setState(() {
-          _userTerms = terms;
-        });
-      }
-    });
-  }
-
-  void _setupSpeechListeners() {
-    // 1. Result Listener
-    _resultSubscription = _speechService.onResult.listen((result) {
-      if (result.finalResult) {
-        if (result.recognizedWords.isNotEmpty) {
-          _processAndInject(result.recognizedWords);
-        }
-      }
-    });
-
-    // 2. Sound Level Listener (for Waveform)
-    _soundLevelSubscription = _speechService.onSoundLevel.listen((level) {
-       double normalized = level.abs() / 10.0;
-       if (normalized > 1.0) normalized = 1.0;
-       
-       if (mounted) {
-         setState(() {
-           _latestSoundLevel = normalized;
-         });
-       }
-       
-       // Send to IME for native waveform
-       FlutterOverlayWindow.sendAudioLevel(normalized);
-    });
-
-    // 3. Status Listener
-    _statusSubscription = _speechService.onStatus.listen((status) {
-      // Handle status updates if needed
     });
   }
 
@@ -166,15 +96,38 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
     super.dispose();
   }
 
+  void _setupDataListeners() {
+    _snippetsSubscription = _snippetService.getSnippets().listen((snippets) {
+      if (mounted) setState(() => _snippets = snippets);
+    });
+    _dictionarySubscription = _dictionaryService.getTerms().listen((terms) {
+      if (mounted) setState(() => _userTerms = terms);
+    });
+  }
+
+  void _setupSpeechListeners() {
+    _resultSubscription = _speechService.onResult.listen((result) {
+      if (result.finalResult && result.recognizedWords.isNotEmpty) {
+        _processAndInject(result.recognizedWords);
+      }
+    });
+
+    _soundLevelSubscription = _speechService.onSoundLevel.listen((level) {
+       double normalized = level.abs() / 10.0;
+       if (normalized > 1.0) normalized = 1.0;
+       if (mounted) setState(() => _latestSoundLevel = normalized);
+       FlutterOverlayWindow.sendAudioLevel(normalized);
+    });
+  }
+
   void _toggleExpand() {
     setState(() {
       _isExpanded = !_isExpanded;
     });
-    // Adjust overlay size based on state
     if (_isExpanded) {
-      FlutterOverlayWindow.resizeOverlay(260, 80, true); // Adjusted width
+      FlutterOverlayWindow.resizeOverlay(260, 80, true);
     } else {
-      FlutterOverlayWindow.resizeOverlay(70, 120, true); // Enable drag when contracted
+      FlutterOverlayWindow.resizeOverlay(70, 120, true);
     }
   }
 
@@ -204,22 +157,51 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
       for (var s in _snippets) {
         print("OverlayToolbar: Available snippet: '${s.shortcut}'");
       }
+
+      // Check selected model
+      final prefs = await SharedPreferences.getInstance();
+      final selectedModel = prefs.getString('selected_model') ?? 'Gemini 2.0 Flash Lite';
       
-      // Use GeminiService to format text and expand snippets
-      final correctedText = await _geminiService.formatText(
-        rawText, 
-        snippets: _snippets, // Pass ALL snippets for function calling
-        userTerms: _userTerms,
-      );
+      String correctedText;
+
+      if (selectedModel == 'Llama 3.2 1B Q4') {
+        print("OverlayToolbar: Using Local Model: Llama 3.2 1B Q4");
+        try {
+          // Ensure model is loaded
+          await _localLLMService.loadModel('llama-3.2-1b-q4.gguf');
+          
+          correctedText = await _localLLMService.formatText(
+            rawText,
+            snippets: _snippets,
+            userTerms: _userTerms,
+          );
+        } catch (e) {
+           print("Local Model Error: $e. Falling back to Cloud.");
+           correctedText = await _geminiService.formatText(
+            rawText, 
+            snippets: _snippets, 
+            userTerms: _userTerms,
+          );
+        }
+      } else {
+        print("OverlayToolbar: Using Cloud Model: Gemini 2.0 Flash Lite (Selected: $selectedModel)");
+        // Use GeminiService
+        correctedText = await _geminiService.formatText(
+          rawText, 
+          snippets: _snippets, 
+          userTerms: _userTerms,
+        );
+      }
       
-      debugPrint("Gemini Corrected: $correctedText");
+      debugPrint("AI Corrected: $correctedText");
       
       _injectText(correctedText);
     } catch (e) {
-      debugPrint("Gemini Error: $e");
+      debugPrint("AI Error: $e");
       _injectText(rawText);
     }
   }
+// ... existing code ...
 
   Future<void> _injectText(String text) async {
     final now = DateTime.now();

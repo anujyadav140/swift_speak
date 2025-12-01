@@ -2,17 +2,24 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:swift_speak/features/auth/login_screen.dart';
 import 'package:swift_speak/features/home/home_screen.dart';
 import 'package:swift_speak/features/overlay/overlay_toolbar.dart';
-import 'features/ime/keyboard_page.dart';
 import 'package:swift_speak/features/permissions/permissions_screen.dart';
+import 'features/ime/keyboard_page.dart';
 import 'firebase_options.dart';
 import 'services/theme_service.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize FlutterDownloader for background downloads
+  await FlutterDownloader.initialize(
+    debug: true,
+    ignoreSsl: true
+  );
   
   // Ensure imeMain is reachable to prevent tree-shaking
   if (DateTime.now().year == 0) imeMain();

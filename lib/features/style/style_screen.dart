@@ -11,7 +11,7 @@ class StyleScreen extends StatefulWidget {
 }
 
 class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin {
-  int _selectedStyleIndex = 0;
+  int _selectedStyleIndex = -1; // Start with -1 to indicate loading
   int _selectedCategoryIndex = 0;
   int? _expandedIndex;
   late final List<StyleCategory> _categories;
@@ -36,7 +36,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
         options: [
           StyleOption(
             title: "Formal.",
-            description: "Caps + Punctuation",
+            description: "Standard capitalization & punctuation",
             sampleText: "Hey, are you free for lunch tomorrow? Let's do 12 if that works for you.",
             highlights: [
               TextHighlight(0, 1, Colors.black), // H
@@ -50,11 +50,10 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
           ),
           StyleOption(
             title: "Casual",
-            description: "Caps + Less punctuation",
-            sampleText: "Hey are you free for lunch tomorrow? Let's do 12 if that works for you",
+            description: "Sentence case + Basic punctuation",
+            sampleText: "Hey are you free for lunch tomorrow let's do 12 if that works for you",
             highlights: [
               TextHighlight(0, 1, Colors.black), // H
-              TextHighlight(37, 38, Colors.black), // L
             ],
             avatarColor: const Color(0xFFF8BBD0),
           ),
@@ -78,7 +77,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
         options: [
           StyleOption(
             title: "Formal.",
-            description: "Caps + Punctuation",
+            description: "Standard capitalization & punctuation",
             sampleText: "Hey, if you're free, let's chat about the great results.",
             highlights: [
               TextHighlight(0, 1, Colors.black), // H
@@ -92,8 +91,8 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
           ),
           StyleOption(
             title: "Casual",
-            description: "Caps + Less punctuation",
-            sampleText: "Hey, if you're free let's chat about the great results",
+            description: "Sentence case + Basic punctuation",
+            sampleText: "Hey if you're free let's chat about the great results",
             highlights: [
               TextHighlight(0, 1, Colors.black), // H
             ],
@@ -123,7 +122,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
         options: [
           StyleOption(
             title: "Formal.",
-            description: "Caps + Punctuation",
+            description: "Standard capitalization & punctuation",
             sampleText: "Hi Alex,\n\nIt was great talking with you today. Looking forward to our next chat.\n\nBest,\nMary",
             highlights: [
               TextHighlight(0, 1, Colors.black), // H
@@ -140,8 +139,8 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
           ),
           StyleOption(
             title: "Casual",
-            description: "Caps + Less punctuation",
-            sampleText: "Hi Alex, it was great talking with you today. Looking forward to our next chat.\n\nBest,\nMary",
+            description: "Sentence case + Basic punctuation",
+            sampleText: "Hi Alex it was great talking with you today looking forward to our next chat\n\nBest\nMary",
             highlights: [
               TextHighlight(0, 1, Colors.black), // H
             ],
@@ -169,7 +168,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
         options: [
           StyleOption(
             title: "Formal.",
-            description: "Caps + Punctuation",
+            description: "Standard capitalization & punctuation",
             sampleText: "So far, I am enjoying the new workout routine.\n\nI am excited for tomorrow's workout, especially after a full night of rest.",
             highlights: [
               TextHighlight(6, 7, Colors.black), // ,
@@ -181,8 +180,8 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
           ),
           StyleOption(
             title: "Casual",
-            description: "Caps + Less punctuation",
-            sampleText: "So far I am enjoying the new workout routine.\n\nI am excited for tomorrow's workout especially after a full night of rest.",
+            description: "Sentence case + Basic punctuation",
+            sampleText: "So far I am enjoying the new workout routine\n\nI am excited for tomorrow's workout especially after a full night of rest",
             highlights: [
               TextHighlight(0, 1, Colors.black), // S
             ],
@@ -208,13 +207,17 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
     final currentCategory = _categories[_selectedCategoryIndex];
     final savedStyle = await _styleService.getStyle(currentCategory.id);
     
-    if (savedStyle != null && mounted) {
-      final index = currentCategory.options.indexWhere((opt) => opt.title == savedStyle['name']);
-      if (index != -1) {
-        setState(() {
-          _selectedStyleIndex = index;
-        });
+    if (mounted) {
+      int newIndex = 0; // Default to first option if nothing saved
+      if (savedStyle != null) {
+        final index = currentCategory.options.indexWhere((opt) => opt.title == savedStyle['name']);
+        if (index != -1) {
+          newIndex = index;
+        }
       }
+      setState(() {
+        _selectedStyleIndex = newIndex;
+      });
     }
   }
 
@@ -252,7 +255,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
                         onTap: () {
                           setState(() {
                             _selectedCategoryIndex = index;
-                            _selectedStyleIndex = 0; // Reset style selection on category change
+                            _selectedStyleIndex = -1; // Reset to loading state
                             _expandedIndex = null; // Collapse any expanded item
                           });
                           _loadSavedStyle(); // Load saved style for the new category

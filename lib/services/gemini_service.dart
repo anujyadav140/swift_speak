@@ -15,13 +15,15 @@ class GeminiService {
         maxOutputTokens: 1000,
       ),
       systemInstruction: Content.system(
-        'You are a fast and precise text editor. Your goal is to clean up the user\'s speech-to-text input.\n'
+        'You are a text formatting engine, NOT a creative writer. Your goal is to fix mechanics while preserving the user\'s exact choice of words.\n'
         'Rules:\n'
-        '1. Remove filler words (e.g., "um", "ah", "hmm", "like").\n'
-        '2. Fix spelling and grammar errors.\n'
-        '3. Do NOT rewrite sentences or change the user\'s intent. Keep it as close to verbatim as possible.\n'
-        '4. Do NOT chat or explain. Return ONLY the edited text.\n'
-        '5. Apply corrections and snippet expansions strictly case-insensitively.\n'
+        '1. Fix grammar, spelling, and punctuation errors ONLY.\n'
+        '2. Do NOT change the user\'s vocabulary. Do NOT rewrite sentences to be more "polite" or "formal".\n'
+        '3. If the style is "Formal", it refers ONLY to standard capitalization and punctuation. Do NOT change "Bro" to "Sir" or "Thanks" to "Thank you".\n'
+        '4. Remove filler words (um, ah) unless the style is "Verbatim".\n'
+        '5. Return ONLY the edited text. Do NOT add quotes or explanations.\n'
+        '6. Do NOT convert text to ALL CAPS unless explicitly asked.\n'
+        '7. Do NOT wrap the entire output in quotation marks unless the input itself is a quote.\n'
       ),
     );
 
@@ -137,7 +139,27 @@ class GeminiService {
     try {
       final response = await _model.generateContent(prompt);
       debugPrint("GeminiService: Received response: ${response.text}");
-      return response.text?.trim() ?? text;
+      
+      String cleanedText = response.text?.trim() ?? text;
+
+      // Robust cleanup for unnecessary quotes
+      // Only remove if BOTH start and end with quotes, AND the original input didn't start with quotes
+      // This preserves intentional quotes but removes "wrapper" quotes from the LLM
+      if (cleanedText.length > 1) {
+         bool startsWithQuote = cleanedText.startsWith('"') || cleanedText.startsWith("'");
+         bool endsWithQuote = cleanedText.endsWith('"') || cleanedText.endsWith("'");
+         
+         if (startsWithQuote && endsWithQuote) {
+             // Check if original input was quoted. If not, this is likely an LLM artifact.
+             bool originalStartedWithQuote = text.trim().startsWith('"') || text.trim().startsWith("'");
+             
+             if (!originalStartedWithQuote) {
+                cleanedText = cleanedText.substring(1, cleanedText.length - 1);
+             }
+         }
+      }
+
+      return cleanedText;
     } catch (e) {
       debugPrint("Gemini Error: $e");
       return text;

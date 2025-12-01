@@ -4,11 +4,13 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/speech_service.dart';
 import '../../services/gemini_service.dart';
 import '../../services/dictionary_service.dart';
 import '../../services/snippet_service.dart';
 import '../../services/style_service.dart';
+import '../../services/local_llm_service.dart';
 import '../../models/snippet.dart';
 import '../../widgets/border_beam_painter.dart';
 
@@ -26,6 +28,7 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   final DictionaryService _dictionaryService = DictionaryService();
   final SnippetService _snippetService = SnippetService();
   final StyleService _styleService = StyleService();
+  final LocalLLMService _localLLMService = LocalLLMService();
   
   bool _isListening = false;
   double _soundLevel = 0.0;
@@ -78,6 +81,11 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
           _appContext = type;
         });
       }
+    } else if (call.method == "refreshSettings") {
+      debugPrint("Refreshing settings (Style/Model)...");
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      debugPrint("Settings refreshed.");
     }
   }
 
@@ -299,12 +307,40 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
       debugPrint("Applying style: $styleInstruction");
     }
 
-    String formattedText = await _geminiService.formatText(
-      fullText, 
-      userTerms: _userTerms, 
-      snippets: _snippets,
-      styleInstruction: styleInstruction
-    );
+    // Check selected model
+    final prefs = await SharedPreferences.getInstance();
+    final selectedModel = prefs.getString('selected_model') ?? 'Gemini 2.0 Flash Lite';
+    
+    String formattedText;
+
+    if (selectedModel == 'Llama 3.2 1B Q4') {
+      debugPrint("KeyboardPage: Using Local Model: Llama 3.2 1B Q4");
+      try {
+        await _localLLMService.loadModel('llama-3.2-1b-q4.gguf');
+        formattedText = await _localLLMService.formatText(
+          fullText,
+          userTerms: _userTerms,
+          snippets: _snippets,
+          styleInstruction: styleInstruction,
+        );
+      } catch (e) {
+        debugPrint("Local Model Error: $e. Falling back to Cloud.");
+        formattedText = await _geminiService.formatText(
+          fullText, 
+          userTerms: _userTerms, 
+          snippets: _snippets,
+          styleInstruction: styleInstruction
+        );
+      }
+    } else {
+      debugPrint("KeyboardPage: Using Cloud Model: Gemini 2.0 Flash Lite (Selected: $selectedModel)");
+      formattedText = await _geminiService.formatText(
+        fullText, 
+        userTerms: _userTerms, 
+        snippets: _snippets,
+        styleInstruction: styleInstruction
+      );
+    }
 
     // 6. Commit
     await _commitText(formattedText);

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/model_download_service.dart';
+import 'dart:async';
 
 class LocalModelScreen extends StatefulWidget {
   const LocalModelScreen({super.key});
@@ -14,16 +15,16 @@ class LocalModelScreen extends StatefulWidget {
 
 class _LocalModelScreenState extends State<LocalModelScreen> {
   final ModelDownloadService _downloadService = ModelDownloadService();
-  // CancelToken? _cancelToken; // Removed, managed by service
+  StreamSubscription? _subscription;
 
   // Placeholder URL - REPLACE WITH ACTUAL FIREBASE STORAGE URL
-  static const String _gemmaUrl = "https://huggingface.co/bartowski/gemma-2-2b-it-abliterated-GGUF/resolve/main/gemma-2-2b-it-abliterated-Q4_K_M.gguf?download=true"; 
-  static const String _gemmaFileName = "gemma-2b.bin";
+  static const String _gemmaUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf?download=true";
+  static const String _gemmaFileName = "llama-3.2-1b-q4.gguf";
 
   final Map<String, dynamic> _gemmaModel = {
-    'name': 'Gemma 2B',
-    'size': '1.5 GB',
-    'description': 'Lightweight model by Google, optimized for mobile.',
+    'name': 'Llama 3.2 1B Q4',
+    'size': '808 MB',
+    'description': 'Lightweight model by Meta, optimized for mobile.',
     'isDownloaded': false,
     'isDownloading': false,
     'isChecking': true,
@@ -47,14 +48,11 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
   @override
   void initState() {
     super.initState();
+    _downloadService.init(); // Initialize background downloader
     _checkDownloadStatus();
     _loadSavedModel();
     
-    // Check for existing background tasks - REMOVED for Dio implementation
-    // _downloadService.checkExistingTasks(_gemmaFileName);
-    
-    // Listen to download updates
-    _downloadService.statusStream.listen((status) {
+    _subscription = _downloadService.statusStream.listen((status) {
       if (mounted && status.fileName == _gemmaFileName) {
         setState(() {
           _gemmaModel['isDownloading'] = status.isDownloading;
@@ -62,8 +60,9 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
           _gemmaModel['speed'] = status.speed;
           _gemmaModel['timeRemaining'] = status.timeRemaining;
           
-          if (!status.isDownloading && status.progress == 1.0) {
+          if (!status.isDownloading && status.progress >= 1.0) {
              _gemmaModel['isDownloaded'] = true;
+             _checkDownloadStatus();
           }
         });
       }
@@ -82,7 +81,7 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
 
   @override
   void dispose() {
-    // _cancelToken?.cancel(); // Removed
+    _subscription?.cancel();
     super.dispose();
   }
 
@@ -97,6 +96,7 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
   }
 
   Future<void> _checkDownloadStatus() async {
+    // Expected size: 1708582784 bytes
     final isDownloaded = await _downloadService.isModelDownloaded(_gemmaFileName);
     if (mounted) {
       setState(() {
@@ -104,7 +104,7 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
         _gemmaModel['isChecking'] = false;
         
         // Safety check: if active model is Gemma but not downloaded, revert
-        if (_activeModel == 'Gemma 2B' && !isDownloaded) {
+        if (_activeModel == 'Llama 3.2 1B Q4' && !isDownloaded) {
              _activeModel = 'Gemini 2.0 Flash Lite';
              _saveModelPreference('Gemini 2.0 Flash Lite');
         }
@@ -132,24 +132,43 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
       if (mounted) {
         setState(() {
           _gemmaModel['isDownloaded'] = false;
-          if (_activeModel == 'Gemma 2B') {
+          if (_activeModel == 'Llama 3.2 1B Q4') {
             _activeModel = 'Gemini 2.0 Flash Lite'; // Revert to default
             _saveModelPreference('Gemini 2.0 Flash Lite');
           }
         });
       }
     } else {
-      // Download
+      // Download or Resume
       if (_gemmaModel['isDownloading']) {
+        // If currently downloading, this button shouldn't be the primary action usually, 
+        // but we'll keep it as "Cancel" or similar if needed. 
+        // However, we are adding specific Pause/Resume buttons below.
+        // For the main button, let's make it "Cancel" if downloading.
         _downloadService.cancelDownload();
       } else {
+        // Start new download
         _downloadService.downloadModel(
           url: _gemmaUrl,
           fileName: _gemmaFileName,
-          totalBytes: 1708582784, // Exact size from logs
+          totalBytes: 847249408, // Exact size from logs
         );
       }
     }
+  }
+
+  Future<void> _pauseDownload() async {
+    await _downloadService.pauseDownload();
+    setState(() {
+      _gemmaModel['isDownloading'] = false;
+    });
+  }
+
+  Future<void> _resumeDownload() async {
+    await _downloadService.resumeDownload();
+    setState(() {
+      _gemmaModel['isDownloading'] = true;
+    });
   }
 
   Future<void> _saveModelPreference(String modelName) async {
@@ -203,7 +222,7 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
           const SizedBox(height: 16),
           _buildModelCard(
             model: _gemmaModel,
-            isActive: _activeModel == 'Gemma 2B',
+            isActive: _activeModel == 'Llama 3.2 1B Q4',
             isDark: isDark,
             textColor: textColor,
             isDownloadable: true,
@@ -284,16 +303,46 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
           const SizedBox(height: 16),
           
           if (isDownloadable) ...[
-            if (isDownloading) ...[
-              const Text(
-                "⚠️ Do not close the app while downloading.",
-                style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
+            if (isDownloading || (progress > 0 && progress < 1.0 && !isDownloaded)) ...[
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isDownloading ? "Downloading..." : "Paused",
+                    style: GoogleFonts.inter(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      if (isDownloading)
+                        IconButton(
+                          icon: const Icon(Icons.pause, color: Colors.orange),
+                          onPressed: _pauseDownload,
+                          tooltip: "Pause",
+                        )
+                      else
+                        IconButton(
+                          icon: const Icon(Icons.play_arrow, color: Colors.green),
+                          onPressed: _resumeDownload,
+                          tooltip: "Resume",
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red),
+                        onPressed: _downloadService.cancelDownload,
+                        tooltip: "Cancel",
+                      ),
+                    ],
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               LinearProgressIndicator(
                 value: progress,
                 backgroundColor: Colors.grey[300],
-                color: Colors.blueAccent,
+                color: isDownloading ? Colors.blueAccent : Colors.orange,
               ),
               const SizedBox(height: 8),
               Row(
@@ -312,7 +361,7 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
                       ),
                       if (model['timeRemaining'] != null)
                         Text(
-                          "ETA: ${_formatDuration(model['timeRemaining'])}",
+                          "ETA: ${_formatDuration(model['timeRemaining']!)}",
                           style: TextStyle(color: textColor.withOpacity(0.6), fontSize: width * 0.037), // 12 * 1.1
                         ),
                     ],
@@ -320,32 +369,47 @@ class _LocalModelScreenState extends State<LocalModelScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-            ],
-
-            SizedBox(
-              width: double.infinity,
-              child: isChecking 
-                  ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
-                  : ElevatedButton(
-                      onPressed: isDownloading ? null : _toggleDownload,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isDownloaded 
-                            ? Colors.red.withOpacity(0.1) 
-                            : (isDark ? Colors.white : Colors.black),
-                        foregroundColor: isDownloaded 
-                            ? Colors.red 
-                            : (isDark ? Colors.black : Colors.white),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+            ] else if (!isDownloading && !isDownloaded) ...[
+               SizedBox(
+                width: double.infinity,
+                child: isChecking 
+                    ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
+                    : ElevatedButton(
+                        onPressed: _toggleDownload,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDark ? Colors.white : Colors.black,
+                          foregroundColor: isDark ? Colors.black : Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          "Download",
+                          style: TextStyle(fontSize: width * 0.043), // 14 * 1.1
+                        ),
                       ),
-                      child: Text(
-                        isDownloaded ? "Delete" : "Download",
-                        style: TextStyle(fontSize: width * 0.043), // 14 * 1.1
-                      ),
+              ),
+            ] else if (isDownloaded) ...[
+               SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _toggleDownload,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.withOpacity(0.1),
+                    foregroundColor: Colors.red,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-            ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Text(
+                    "Delete",
+                    style: TextStyle(fontSize: width * 0.043), // 14 * 1.1
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ),
