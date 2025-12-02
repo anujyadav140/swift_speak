@@ -75,6 +75,9 @@ public class SwiftSpeakIMEService extends InputMethodService {
                         result.notImplemented();
                     }
                 });
+
+        setupScreenshotChannel();
+
     }
 
     @Override
@@ -139,10 +142,110 @@ public class SwiftSpeakIMEService extends InputMethodService {
         // }
     }
 
+    // Screenshot Detection
+    private android.database.ContentObserver screenshotObserver;
+    private MethodChannel screenshotChannel;
+
+    private void setupScreenshotChannel() {
+        screenshotChannel = new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(),
+                "com.example.swift_speak/screenshot");
+        screenshotChannel.setMethodCallHandler((call, result) -> {
+            if (call.method.equals("startListening")) {
+                startScreenshotListening();
+                result.success(null);
+            } else if (call.method.equals("stopListening")) {
+                stopScreenshotListening();
+                result.success(null);
+            } else {
+                result.notImplemented();
+            }
+        });
+    }
+
+    private void startScreenshotListening() {
+        if (screenshotObserver != null)
+            return;
+
+        android.util.Log.d("SwiftSpeakIME", "Starting screenshot listening...");
+        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        screenshotObserver = new android.database.ContentObserver(handler) {
+            @Override
+            public void onChange(boolean selfChange, android.net.Uri uri) {
+                super.onChange(selfChange, uri);
+                android.util.Log.d("SwiftSpeakIME", "ContentObserver onChange: " + uri);
+                handleMediaChange();
+            }
+        };
+
+        getContentResolver().registerContentObserver(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                true,
+                screenshotObserver);
+    }
+
+    private void stopScreenshotListening() {
+        android.util.Log.d("SwiftSpeakIME", "Stopping screenshot listening...");
+        if (screenshotObserver != null) {
+            getContentResolver().unregisterContentObserver(screenshotObserver);
+            screenshotObserver = null;
+        }
+    }
+
+    private void handleMediaChange() {
+        android.util.Log.d("SwiftSpeakIME", "Handling media change...");
+        String[] projection = {
+                android.provider.MediaStore.Images.Media.DATA,
+                android.provider.MediaStore.Images.Media.DATE_ADDED
+        };
+        String sortOrder = android.provider.MediaStore.Images.Media.DATE_ADDED + " DESC";
+
+        try (android.database.Cursor cursor = getContentResolver().query(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                null,
+                null,
+                sortOrder)) {
+
+            if (cursor != null && cursor.moveToFirst()) {
+                int pathColumn = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.DATA);
+                int dateColumn = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.DATE_ADDED);
+
+                if (pathColumn != -1 && dateColumn != -1) {
+                    String path = cursor.getString(pathColumn);
+                    long dateAdded = cursor.getLong(dateColumn);
+
+                    long currentTime = System.currentTimeMillis() / 1000;
+                    long diff = currentTime - dateAdded;
+
+                    android.util.Log.d("SwiftSpeakIME", "Latest image: " + path + ", Added: " + dateAdded
+                            + ", Current: " + currentTime + ", Diff: " + diff);
+
+                    // Check if it's a screenshot (by path) and recent (last 5 seconds)
+                    if (diff <= 5 && path.toLowerCase().contains("screenshots")) {
+                        android.util.Log.d("SwiftSpeakIME", "Screenshot detected! Sending to Flutter.");
+                        // Run on UI thread to be safe, though we are likely already on it
+                        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                            if (screenshotChannel != null) {
+                                screenshotChannel.invokeMethod("onScreenshot", path);
+                            }
+                        });
+                    } else {
+                        android.util.Log.d("SwiftSpeakIME", "Ignored: Not a recent screenshot.");
+                    }
+                }
+            } else {
+                android.util.Log.d("SwiftSpeakIME", "Cursor empty.");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("SwiftSpeakIME", "Error handling media change", e);
+        }
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
         android.util.Log.d("SwiftSpeakIME", "onDestroy: Cleaning up");
+        stopScreenshotListening(); // Ensure we unregister
         if (flutterView != null) {
             flutterView.detachFromFlutterEngine();
         }

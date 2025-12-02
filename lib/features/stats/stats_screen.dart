@@ -32,15 +32,6 @@ class StatsScreen extends StatelessWidget {
                       ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  "Here's a personal stats of your productivity with Swift Speak.",
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
-                        fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
-                      ),
-                  textAlign: TextAlign.center,
-                ),
                 const SizedBox(height: 32),
                 Expanded(
                   child: GridView.count(
@@ -54,28 +45,24 @@ class StatsScreen extends StatelessWidget {
                         title: "DAILY STREAK",
                         value: "${stats.currentStreak} days",
                         emoji: "👋",
-                        subtitle: "Welcome!",
                       ),
                       _buildStatCard(
                         context,
                         title: "AVERAGE SPEED",
                         value: "${stats.wpm.toStringAsFixed(0)} words per minute",
                         emoji: "🏅",
-                        subtitle: "Top 5% of all Flow users",
                       ),
                       _buildStatCard(
                         context,
                         title: "TOTAL WORDS DICTATED",
                         value: "${stats.totalWords}",
                         emoji: "🚀",
-                        subtitle: "You've written 9 cover letters!", // Placeholder
                       ),
                       _buildStatCard(
                         context,
                         title: "TOTAL APPS USED",
                         value: "${stats.totalAppsUsed} apps",
                         emoji: "⭐",
-                        subtitle: "You are almost at flow mastery!",
                       ),
                     ],
                   ),
@@ -93,7 +80,6 @@ class StatsScreen extends StatelessWidget {
     required String title,
     required String value,
     required String emoji,
-    required String subtitle,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? Colors.grey[900] : Colors.grey[100];
@@ -131,14 +117,6 @@ class StatsScreen extends StatelessWidget {
                 TextSpan(text: emoji),
               ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
-                  fontSize: width * 0.033, // approx 12 -> 0.033
-                ),
           ),
         ],
       ),

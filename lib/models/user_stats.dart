@@ -6,6 +6,7 @@ class UserStats {
   final int totalWords;
   final int totalDurationSeconds;
   final int totalAppsUsed;
+  final List<String> usedAppPackages;
 
   UserStats({
     this.currentStreak = 0,
@@ -13,6 +14,7 @@ class UserStats {
     this.totalWords = 0,
     this.totalDurationSeconds = 0,
     this.totalAppsUsed = 0,
+    this.usedAppPackages = const [],
   });
 
   double get wpm {
@@ -29,6 +31,7 @@ class UserStats {
       totalWords: map['totalWords'] ?? 0,
       totalDurationSeconds: map['totalDurationSeconds'] ?? 0,
       totalAppsUsed: map['totalAppsUsed'] ?? 0,
+      usedAppPackages: List<String>.from(map['usedAppPackages'] ?? []),
     );
   }
 
@@ -41,6 +44,7 @@ class UserStats {
       'totalWords': totalWords,
       'totalDurationSeconds': totalDurationSeconds,
       'totalAppsUsed': totalAppsUsed,
+      'usedAppPackages': usedAppPackages,
     };
   }
 }

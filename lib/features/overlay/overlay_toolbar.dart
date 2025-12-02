@@ -12,6 +12,7 @@ import '../../services/snippet_service.dart';
 import '../../models/snippet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/local_llm_service.dart';
+import '../../services/screenshot_service.dart';
 
 class OverlayToolbar extends StatefulWidget {
   const OverlayToolbar({super.key});
@@ -30,6 +31,9 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
   final DictionaryService _dictionaryService = DictionaryService();
   final LocalLLMService _localLLMService = LocalLLMService();
 
+  // ... existing code ...
+  final ScreenshotService _screenshotService = ScreenshotService();
+
   // State
   bool _isExpanded = false;
   bool _isInputActive = false;
@@ -40,6 +44,10 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
   DateTime _lastInjectionTime = DateTime.fromMillisecondsSinceEpoch(0);
   List<Snippet> _snippets = [];
   List<DictionaryTerm> _userTerms = [];
+  
+  // Smart Schedule State
+  bool _isAnalyzingScreenshot = false;
+  String? _screenshotResult;
 
   // Subscriptions
   StreamSubscription? _resultSubscription;
@@ -58,6 +66,7 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
 
     _setupSpeechListeners();
     _setupDataListeners();
+    _setupScreenshotListener();
 
     FlutterOverlayWindow.overlayListener.listen((event) {
       if (event is bool) {
@@ -77,11 +86,55 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
           setState(() {
             _isInputActive = false;
             _isExpanded = false;
+            // Reset Smart Schedule state on collapse
+            _isAnalyzingScreenshot = false;
+            _screenshotResult = null;
             FlutterOverlayWindow.resizeOverlay(70, 120, true);
           });
         }
       }
     });
+  }
+
+  void _setupScreenshotListener() {
+    debugPrint("OverlayToolbar: Setting up screenshot listener");
+    _screenshotService.onScreenshotDetected = (path) {
+      debugPrint("OverlayToolbar: Screenshot detected callback triggered for $path");
+      _handleScreenshot(path);
+    };
+    _screenshotService.startListening();
+  }
+
+  Future<void> _handleScreenshot(String path) async {
+    debugPrint("OverlayToolbar: Handling screenshot: $path");
+    if (!mounted) {
+      debugPrint("OverlayToolbar: Not mounted, ignoring screenshot");
+      return;
+    }
+    
+    setState(() {
+      _isExpanded = true;
+      _isAnalyzingScreenshot = true;
+      _screenshotResult = null;
+    });
+    FlutterOverlayWindow.resizeOverlay(300, 150, true); // Larger for result
+
+    try {
+      final result = await _geminiService.analyzeScreenshot(path);
+      if (mounted) {
+        setState(() {
+          _isAnalyzingScreenshot = false;
+          _screenshotResult = result.text;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isAnalyzingScreenshot = false;
+          _screenshotResult = "Error: $e";
+        });
+      }
+    }
   }
 
   @override
@@ -93,7 +146,106 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
     _snippetsSubscription?.cancel();
     _dictionarySubscription?.cancel();
     _speechService.dispose();
+    _screenshotService.stopListening();
     super.dispose();
+  }
+
+  // ... existing methods ...
+
+
+
+  Widget _buildContent(Color iconColor) {
+    if (_isAnalyzingScreenshot) {
+      return _buildLoadingView(iconColor);
+    } else if (_screenshotResult != null) {
+      return _buildResultView(iconColor);
+    } else if (_isExpanded) {
+      return _buildExpandedToolbar(iconColor);
+    } else {
+      return _buildCollapsedView(iconColor);
+    }
+  }
+
+  Widget _buildLoadingView(Color iconColor) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.graphic_eq, color: Colors.blueAccent, size: 32),
+            const SizedBox(width: 16),
+            const SizedBox(
+              width: 20, 
+              height: 20, 
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
+            ),
+            const SizedBox(width: 16),
+            const Icon(Icons.calendar_month, color: Colors.greenAccent, size: 32),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          "Checking Schedule...",
+          style: TextStyle(color: iconColor, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultView(Color iconColor) {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Text(
+                _screenshotResult!,
+                style: TextStyle(color: iconColor, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
+                onPressed: () {
+                  setState(() {
+                    _screenshotResult = null;
+                    _isExpanded = false;
+                    FlutterOverlayWindow.resizeOverlay(70, 120, true);
+                  });
+                },
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _injectText(_screenshotResult!);
+                  setState(() {
+                    _screenshotResult = null;
+                    _isExpanded = false;
+                    FlutterOverlayWindow.resizeOverlay(70, 120, true);
+                  });
+                },
+                icon: const Icon(Icons.check, size: 16),
+                label: const Text("Insert"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _setupDataListeners() {
@@ -260,7 +412,7 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
               ),
               child: Material(
                 color: Colors.transparent,
-                child: _isExpanded ? _buildExpandedToolbar(accentColor) : _buildCollapsedView(accentColor),
+                child: _buildContent(accentColor),
               ),
             ),
           ],

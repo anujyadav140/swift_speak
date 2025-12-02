@@ -1,21 +1,18 @@
-
-import 'package:avatar_glow/avatar_glow.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:avatar_glow/avatar_glow.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
-import 'package:swift_speak/features/home/quick_tips_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:swift_speak/features/stats/stats_screen.dart';
 import 'package:swift_speak/features/dictionary/dictionary_screen.dart';
 import 'package:swift_speak/features/style/style_screen.dart';
 import 'package:swift_speak/features/snippets/snippets_screen.dart';
 import 'package:swift_speak/features/local_model/local_model_screen.dart';
 import 'package:swift_speak/features/permissions/permissions_screen.dart';
-
+import 'package:swift_speak/features/home/quick_tips_screen.dart';
+import 'package:swift_speak/features/home/quick_tips_carousel.dart';
 import 'package:swift_speak/services/theme_service.dart';
-import '../../widgets/border_beam_painter.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,29 +21,16 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-
+class _HomeScreenState extends State<HomeScreen> {
   final ThemeService _themeService = ThemeService();
   bool _hasMicPermission = false;
-  bool _isCheckingPermissions = true; // Add loading state
-
-  int _selectedIndex = 1;
-  late AnimationController _beamController;
+  bool _showQuickTips = false; // Default to false to prevent flash
 
   @override
   void initState() {
     super.initState();
     _checkMicPermission();
-    _beamController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 4000),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _beamController.dispose();
-    super.dispose();
+    _loadQuickTipsPreference();
   }
 
   Future<void> _checkMicPermission() async {
@@ -56,83 +40,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (mounted) {
       setState(() {
         _hasMicPermission = hasPermission;
-        _isCheckingPermissions = false; // Check complete
       });
     }
   }
 
-  Future<void> _requestMicPermission() async {
-    if (_hasMicPermission) return;
-
-    final status = await Permission.microphone.request();
-    if (status.isGranted) {
-      if (mounted) {
-        setState(() {
-          _hasMicPermission = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Microphone permission granted!")),
-        );
-      }
-    } else if (status.isPermanentlyDenied) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Permission permanently denied. Opening settings..."),
-          ),
-        );
-        await openAppSettings();
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("Permission denied. Please enable in App Settings.")),
-        );
-      }
+  Future<void> _loadQuickTipsPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final shouldShow = prefs.getBool('showQuickTips') ?? true;
+    if (mounted && shouldShow) {
+      setState(() {
+        _showQuickTips = true;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final user = FirebaseAuth.instance.currentUser;
+    final userName = user?.displayName ?? "User";
 
     return Scaffold(
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-              ),
-              child: Text(
-                'Swift Speak',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                ),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.logout, color: Theme.of(context).iconTheme.color),
-              title: const Text('Sign Out'),
-              onTap: () async {
-                await FirebaseAuth.instance.signOut();
-              },
-            ),
-          ],
-        ),
-      ),
       appBar: AppBar(
         title: Text(
-          _selectedIndex == 0 
-              ? "Dictionary" 
-              : _selectedIndex == 2 
-                  ? "Snippets"
-                  : _selectedIndex == 3
-                      ? "Style" 
-                      : "Swift Speak",
+          "Swift Speak",
           style: GoogleFonts.ebGaramond(
             fontWeight: FontWeight.bold,
             fontSize: 24,
@@ -144,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         actions: [
           IconButton(
             icon: Icon(
-              Icons.emoji_events,
+              Icons.bar_chart,
               color: Theme.of(context).iconTheme.color,
             ),
             onPressed: () {
@@ -166,435 +97,197 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ],
       ),
-      body: _selectedIndex == 0 
-          ? const DictionaryScreen() 
-          : _selectedIndex == 1 
-              ? _buildHomeContent() 
-              : _selectedIndex == 2
-                  ? const SnippetsScreen()
-                  : const StyleScreen(),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: isDark ? Colors.black : Colors.white,
-          border: Border(
-            top: BorderSide(
-              color: isDark ? Colors.white10 : Colors.black12,
-              width: 1,
+      drawer: _buildDrawer(context),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Welcome back, $userName 👋",
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
             ),
-          ),
-        ),
-        child: SafeArea(
-          child: SizedBox(
-            height: 80,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.book_outlined, Icons.book),
-                _buildNavItem(1, Icons.home_outlined, Icons.home),
-                _buildNavItem(2, Icons.content_cut_outlined, Icons.content_cut),
-                _buildNavItem(3, Icons.auto_awesome_outlined, Icons.auto_awesome),
-              ],
+            const SizedBox(height: 20),
+            
+            // Quick Tips Carousel (Conditional)
+            if (_showQuickTips) ...[
+              QuickTipsCarousel(
+                onDismiss: () {
+                  setState(() {
+                    _showQuickTips = false;
+                  });
+                },
+              ),
+              const SizedBox(height: 24),
+            ],
+            
+            // Feature Cards List
+            _buildFeatureCard(
+              context,
+              title: "Dictionary",
+              subtitle: "Manage your personal dictionary",
+              icon: Icons.book,
+              color: const Color(0xFF607D8B), // Blue Grey
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictionaryScreen())),
             ),
-          ),
+            const SizedBox(height: 16),
+            _buildFeatureCard(
+              context,
+              title: "Snippets",
+              subtitle: "Manage text shortcuts",
+              icon: Icons.content_cut,
+              color: const Color(0xFF00897B), // Teal
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SnippetsScreen())),
+            ),
+            const SizedBox(height: 16),
+            _buildFeatureCard(
+              context,
+              title: "Style",
+              subtitle: "Customize your tone",
+              icon: Icons.auto_awesome,
+              color: const Color(0xFFEC407A), // Pink
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StyleScreen())),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(int index, IconData iconOutlined, IconData iconFilled) {
-    final isSelected = _selectedIndex == index;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedIndex = index;
-        });
-      },
-      child: CustomPaint(
-        painter: isSelected 
-            ? BorderBeamPainter(
-                animation: _beamController, 
-                borderRadius: 20,
-                color: isDark ? Colors.white : Colors.black,
-              ) 
-            : null,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: Colors.transparent,
-          ),
-          child: Icon(
-            isSelected ? iconFilled : iconOutlined,
-            color: isDark ? Colors.white : Colors.black,
-            size: 28,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHomeContent() {
-    final user = FirebaseAuth.instance.currentUser;
-    final userName = user?.displayName ?? "User";
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final size = MediaQuery.of(context).size;
-    final width = size.width;
-    final height = size.height;
-
-    // Responsive calculations
-    // Responsive calculations
-    final gridHeight = height * 0.28; // Increased from 0.25 to fix overflow
-    final cardPadding = width * 0.04;
-    final iconPadding = width * 0.025;
-    final largeIconSize = width * 0.07;
-    final smallIconSize = width * 0.05;
-    final titleFontSize = width * 0.05;
-    final subtitleFontSize = width * 0.03;
-
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(width * 0.06),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
         children: [
-          // Welcome Header
-          Text(
-            "Welcome back, $userName 👋",
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold, // Changed to bold
-                  fontSize: titleFontSize,
-                ),
-          ),
-
-
-          SizedBox(height: width * 0.04),
-
-          // Grid Layout
-          SizedBox(
-            height: gridHeight,
-            child: Row(
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Left Column
-                Expanded(
-                  child: Column(
-                    children: [
-                      // Top Left: Quick Tips (Yellow)
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const QuickTipsScreen()),
-                            );
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFC107), // Amber/Yellow
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            padding: EdgeInsets.all(cardPadding * 0.8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.all(iconPadding * 0.8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(Icons.lightbulb, color: Colors.black, size: smallIconSize),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  "Quick Tips",
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontSize: titleFontSize,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  "Learn how to use Swift Speak",
-                                  style: TextStyle(
-                                    color: Colors.black87,
-                                    fontSize: subtitleFontSize,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(height: height * 0.02),
-
-                      // Bottom Left: Style (Teal/Cyan)
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedIndex = 3;
-                            });
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEC407A), // Pink
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            padding: EdgeInsets.all(cardPadding * 0.8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.all(iconPadding * 0.8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(Icons.auto_awesome, color: Colors.white, size: smallIconSize),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  "Style",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: titleFontSize,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  "Customize your tone",
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: subtitleFontSize,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const Icon(
+                  Icons.graphic_eq,
+                  size: 48,
+                  color: Colors.white,
                 ),
-                
-                SizedBox(width: width * 0.04),
-                
-                // Right Column
-                Expanded(
-                  child: Column(
-                    children: [
-                      // Top Right: Permissions (Purple)
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const PermissionsScreen()),
-                            );
-                            _checkMicPermission();
-                          },
-                            child: Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF9575CD), // Purple
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              padding: EdgeInsets.all(cardPadding * 0.8),
-                              child: Stack(
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Container(
-                                        padding: EdgeInsets.all(iconPadding * 0.8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.3),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: _isCheckingPermissions
-                                            ? SizedBox(
-                                                width: smallIconSize,
-                                                height: smallIconSize,
-                                                child: const CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                                ),
-                                              )
-                                            : Icon(
-                                                Icons.verified_user,
-                                                color: Colors.white,
-                                                size: smallIconSize,
-                                              ),
-                                      ),
-                                      const Spacer(),
-                                      Text(
-                                        "Permissions",
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: titleFontSize,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        _isCheckingPermissions
-                                            ? "Checking..."
-                                            : (_hasMicPermission ? "Mic - Granted" : "Action Required"),
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: subtitleFontSize,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  if (!_isCheckingPermissions && !_hasMicPermission)
-                                    Positioned(
-                                      top: 0,
-                                      right: 0,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.red,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          Icons.priority_high,
-                                          color: Colors.white,
-                                          size: smallIconSize * 0.8,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                        ),
-                      ),
-                      
-                      SizedBox(height: height * 0.02),
-                      
-                      // Bottom Right: Dictionary (Blue Grey)
-                      // Bottom Right: Model Inference (Dark Grey)
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const LocalModelScreen()),
-                            );
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF424242), // Dark Grey
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            padding: EdgeInsets.all(cardPadding * 0.8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.all(iconPadding * 0.8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(Icons.memory, color: Colors.white, size: smallIconSize),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  "AI Model",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: titleFontSize,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  "Local / Cloud",
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: subtitleFontSize,
-                                    fontWeight: FontWeight.bold, // Added bold
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 10),
+                const Text(
+                  'Swift Speak',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
                   ),
                 ),
               ],
             ),
           ),
-
-          SizedBox(height: width * 0.04),
-
-          // Model Inference Card
-          // Dictionary Card
-          GestureDetector(
+          ListTile(
+            leading: const Icon(Icons.lightbulb_outline),
+            title: const Text('Quick Tips'),
             onTap: () {
-              setState(() {
-                _selectedIndex = 0;
-              });
+              Navigator.pop(context); // Close drawer
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const QuickTipsScreen()));
             },
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFF607D8B), // Blue Grey
-                borderRadius: BorderRadius.circular(30),
-              ),
-              padding: EdgeInsets.all(cardPadding),
-              child: Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(iconPadding),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.book, color: Colors.white, size: largeIconSize),
-                  ),
-                  SizedBox(width: width * 0.04),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Dictionary",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: titleFontSize,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        "Manage your personal dictionary",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: subtitleFontSize,
-                          fontWeight: FontWeight.bold, // Added bold
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Icon(Icons.arrow_forward_ios, color: Colors.white54, size: smallIconSize),
-                ],
-              ),
-            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.verified_user),
+            title: const Text('Permissions'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const PermissionsScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.memory),
+            title: const Text('AI Model'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalModelScreen()));
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Sign Out'),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+            },
           ),
         ],
       ),
     );
   }
 
+  Widget _buildFeatureCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: isDark ? Colors.black : color,
+          borderRadius: BorderRadius.circular(20),
+          border: isDark ? Border.all(color: color, width: 1) : null,
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDark ? color.withOpacity(0.2) : Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon, 
+                color: isDark ? color : Colors.white, 
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: isDark ? Colors.grey : Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios, 
+              color: isDark ? Colors.grey : Colors.white54, 
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

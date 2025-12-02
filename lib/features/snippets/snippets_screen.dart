@@ -65,339 +65,350 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = Theme.of(context).textTheme.bodyMedium?.color;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header / Search
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _isSearching
-                ? Container(
-                    key: const ValueKey('searchBar'),
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[900] : Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.search, color: Colors.grey),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            autofocus: true,
-                            style: TextStyle(color: textColor),
-                            decoration: const InputDecoration(
-                              hintText: "Search snippets...",
-                              border: InputBorder.none,
-                              hintStyle: TextStyle(color: Colors.grey),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Snippets"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header / Search
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _isSearching
+                  ? Container(
+                      key: const ValueKey('searchBar'),
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.grey[900] : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search, color: Colors.grey),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: true,
+                              style: TextStyle(color: textColor),
+                              decoration: const InputDecoration(
+                                hintText: "Search snippets...",
+                                border: InputBorder.none,
+                                hintStyle: TextStyle(color: Colors.grey),
+                              ),
+                              onChanged: (value) {
+                                setState(() {}); // Trigger rebuild to filter list
+                              },
                             ),
-                            onChanged: (value) {
-                              setState(() {}); // Trigger rebuild to filter list
-                            },
                           ),
-                        ),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _isSearching = false;
+                                _searchController.clear();
+                              });
+                            },
+                            icon: const Icon(Icons.close, color: Colors.grey),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Row(
+                      key: const ValueKey('header'),
+                      children: [
+                        _buildTab("All", true),
+                        const Spacer(),
                         IconButton(
                           onPressed: () {
                             setState(() {
-                              _isSearching = false;
-                              _searchController.clear();
+                              _isSearching = true;
                             });
                           },
-                          icon: const Icon(Icons.close, color: Colors.grey),
+                          icon: const Icon(Icons.search),
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () => _toggleAddForm(),
+                          icon: Icon(Icons.add, size: MediaQuery.of(context).size.width * 0.0495), // 18 -> 0.0495
+                          label: Text(
+                            "Add new",
+                            style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.0385), // 14 -> 0.0385
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark ? Colors.white : Colors.black,
+                            foregroundColor: isDark ? Colors.black : Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            
+            if (_showBanner && !_isSearching) ...[
+              const SizedBox(height: 24),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF9C4), // Light Yellow
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "Never retype the same thing twice.",
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontSize: MediaQuery.of(context).size.width * 0.055,
+                              fontFamily: 'Times New Roman',
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () async {
+                            setState(() {
+                              _showBanner = false;
+                            });
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('snippets_banner_closed', true);
+                          },
+                          icon: const Icon(Icons.close, color: Colors.black54),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
                       ],
                     ),
-                  )
-                : Row(
-                    key: const ValueKey('header'),
-                    children: [
-                      _buildTab("All", true),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _isSearching = true;
-                          });
-                        },
-                        icon: const Icon(Icons.search),
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: () => _toggleAddForm(),
-                        icon: Icon(Icons.add, size: MediaQuery.of(context).size.width * 0.0495), // 18 -> 0.0495
-                        label: Text(
-                          "Add new",
-                          style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.0385), // 14 -> 0.0385
+                    const SizedBox(height: 16),
+                    RichText(
+                      text: TextSpan(
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontSize: MediaQuery.of(context).size.width * 0.032,
+                          height: 1.5,
+                          fontFamily: 'Times New Roman',
                         ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isDark ? Colors.white : Colors.black,
-                          foregroundColor: isDark ? Colors.black : Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                        children: const [
+                          TextSpan(text: "Save shortcuts for emails, links, or addresses. "),
+                          TextSpan(
+                            text: "Speak the shortcut and Swift Speak expands it instantly.",
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-          ),
-          
-          if (_showBanner && !_isSearching) ...[
-            const SizedBox(height: 24),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF9C4), // Light Yellow
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          "Never retype the same thing twice.",
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontSize: MediaQuery.of(context).size.width * 0.055,
-                            fontFamily: 'Times New Roman',
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () async {
-                          setState(() {
-                            _showBanner = false;
-                          });
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('snippets_banner_closed', true);
-                        },
-                        icon: const Icon(Icons.close, color: Colors.black54),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: MediaQuery.of(context).size.width * 0.032,
-                        height: 1.5,
-                        fontFamily: 'Times New Roman',
-                      ),
-                      children: const [
-                        TextSpan(text: "Save shortcuts for emails, links, or addresses. "),
-                        TextSpan(
-                          text: "Speak the shortcut and Swift Speak expands it instantly.",
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
-                        ),
+                    ),
+                    const SizedBox(height: 24),
+                    Column(
+                      children: [
+                        _buildExampleRow("Linkedin", "https://www.linkedin.com/in/john-doe-9b0139134/"),
+                        const SizedBox(height: 12),
+                        _buildExampleRow("Email", "john.doe@swiftspeak.ai"),
+                        const SizedBox(height: 12),
+                        _buildExampleRow("Calendly", "calendly.com/john-doe/30min"),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Column(
-                    children: [
-                      _buildExampleRow("Linkedin", "https://www.linkedin.com/in/john-doe-9b0139134/"),
-                      const SizedBox(height: 12),
-                      _buildExampleRow("Email", "john.doe@swiftspeak.ai"),
-                      const SizedBox(height: 12),
-                      _buildExampleRow("Calendly", "calendly.com/john-doe/30min"),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => _toggleAddForm(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2D2D2D),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () => _toggleAddForm(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2D2D2D),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
-                    ),
-                    child: Text(
-                      "Add new snippet",
-                      style: TextStyle(
-                        fontSize: MediaQuery.of(context).size.width * 0.036,
-                        fontWeight: FontWeight.bold,
+                      child: Text(
+                        "Add new snippet",
+                        style: TextStyle(
+                          fontSize: MediaQuery.of(context).size.width * 0.036,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-          
-          const SizedBox(height: 24),
+            ],
+            
+            const SizedBox(height: 24),
 
-          // Inline Add Form
-          if (_showAddForm)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 24.0),
-              child: AddSnippetForm(
-                key: ValueKey("$_initialShortcut-$_initialContent"),
-                initialShortcut: _initialShortcut,
-                initialContent: _initialContent,
-                onCancel: _hideAddForm,
-                onSuccess: _hideAddForm,
+            // Inline Add Form
+            if (_showAddForm)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24.0),
+                child: AddSnippetForm(
+                  key: ValueKey("$_initialShortcut-$_initialContent"),
+                  initialShortcut: _initialShortcut,
+                  initialContent: _initialContent,
+                  onCancel: _hideAddForm,
+                  onSuccess: _hideAddForm,
+                ),
               ),
-            ),
 
-          // Snippets List
-          StreamBuilder<List<Snippet>>(
-            stream: _snippetService.getSnippets(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+            // Snippets List
+            StreamBuilder<List<Snippet>>(
+              stream: _snippetService.getSnippets(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-              var snippets = snapshot.data ?? [];
+                var snippets = snapshot.data ?? [];
 
-              // Filter snippets if searching
-              if (_isSearching && _searchController.text.isNotEmpty) {
-                final query = _searchController.text.toLowerCase();
-                snippets = snippets.where((snippet) {
-                  return snippet.shortcut.toLowerCase().contains(query) ||
-                      snippet.content.toLowerCase().contains(query);
-                }).toList();
-              }
+                // Filter snippets if searching
+                if (_isSearching && _searchController.text.isNotEmpty) {
+                  final query = _searchController.text.toLowerCase();
+                  snippets = snippets.where((snippet) {
+                    return snippet.shortcut.toLowerCase().contains(query) ||
+                        snippet.content.toLowerCase().contains(query);
+                  }).toList();
+                }
 
-              if (snippets.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 32.0),
-                    child: Text(
-                      _isSearching ? "No matching snippets found." : "No snippets added yet.",
-                      style: TextStyle(color: textColor?.withOpacity(0.5)),
+                if (snippets.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 32.0),
+                      child: Text(
+                        _isSearching ? "No matching snippets found." : "No snippets added yet.",
+                        style: TextStyle(color: textColor?.withOpacity(0.5)),
+                      ),
                     ),
-                  ),
-                );
-              }
+                  );
+                }
 
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: snippets.length,
-                separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
-                itemBuilder: (context, index) {
-                  final snippet = snippets[index];
-                  final isSelected = _selectedSnippetId == snippet.id;
-                  final isEditing = _editingSnippetId == snippet.id;
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: snippets.length,
+                  separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
+                  itemBuilder: (context, index) {
+                    final snippet = snippets[index];
+                    final isSelected = _selectedSnippetId == snippet.id;
+                    final isEditing = _editingSnippetId == snippet.id;
 
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            if (_selectedSnippetId == snippet.id) {
-                              _selectedSnippetId = null;
-                            } else {
-                              _selectedSnippetId = snippet.id;
-                              _editingSnippetId = null;
-                            }
-                          });
-                        },
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16.0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: isDark ? Colors.grey[800] : Colors.grey[200],
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        snippet.shortcut,
-                                        style: TextStyle(
-                                          fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
-                                          fontWeight: FontWeight.bold,
-                                          color: textColor,
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              if (_selectedSnippetId == snippet.id) {
+                                _selectedSnippetId = null;
+                              } else {
+                                _selectedSnippetId = snippet.id;
+                                _editingSnippetId = null;
+                              }
+                            });
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16.0),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          snippet.shortcut,
+                                          style: TextStyle(
+                                            fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
+                                            fontWeight: FontWeight.bold,
+                                            color: textColor,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      "→ ${snippet.content}",
-                                      style: TextStyle(
-                                        fontSize: MediaQuery.of(context).size.width * 0.044, // 16 -> 0.044
-                                        color: textColor?.withOpacity(0.8),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        "→ ${snippet.content}",
+                                        style: TextStyle(
+                                          fontSize: MediaQuery.of(context).size.width * 0.044, // 16 -> 0.044
+                                          color: textColor?.withOpacity(0.8),
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              if (isSelected && !isEditing) ...[
-                                IconButton(
-                                  icon: Icon(Icons.edit, size: 24, color: Colors.grey[400]),
-                                  onPressed: () {
-                                    setState(() {
-                                      _editingSnippetId = snippet.id;
-                                      _selectedSnippetId = null;
-                                    });
-                                  },
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.delete, size: 24, color: Colors.grey[400]),
-                                  onPressed: () {
-                                    _snippetService.deleteSnippet(snippet.id);
-                                    setState(() => _selectedSnippetId = null);
-                                  },
-                                ),
-                              ] else if (!isEditing)
-                                const Icon(Icons.content_cut, size: 16, color: Colors.grey), // Scissor icon
-                            ],
+                                if (isSelected && !isEditing) ...[
+                                  IconButton(
+                                    icon: Icon(Icons.edit, size: 24, color: Colors.grey[400]),
+                                    onPressed: () {
+                                      setState(() {
+                                        _editingSnippetId = snippet.id;
+                                        _selectedSnippetId = null;
+                                      });
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.delete, size: 24, color: Colors.grey[400]),
+                                    onPressed: () {
+                                      _snippetService.deleteSnippet(snippet.id);
+                                      setState(() => _selectedSnippetId = null);
+                                    },
+                                  ),
+                                ] else if (!isEditing)
+                                  const Icon(Icons.content_cut, size: 16, color: Colors.grey), // Scissor icon
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      if (isEditing)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 16.0),
-                          child: AddSnippetForm(
-                            snippetId: snippet.id,
-                            initialShortcut: snippet.shortcut,
-                            initialContent: snippet.content,
-                            onCancel: () {
-                              setState(() {
-                                _editingSnippetId = null;
-                              });
-                            },
-                            onSuccess: () {
-                              setState(() {
-                                _editingSnippetId = null;
-                              });
-                            },
+                        if (isEditing)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: AddSnippetForm(
+                              snippetId: snippet.id,
+                              initialShortcut: snippet.shortcut,
+                              initialContent: snippet.content,
+                              onCancel: () {
+                                setState(() {
+                                  _editingSnippetId = null;
+                                });
+                              },
+                              onSuccess: () {
+                                setState(() {
+                                  _editingSnippetId = null;
+                                });
+                              },
+                            ),
                           ),
-                        ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
-        ],
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

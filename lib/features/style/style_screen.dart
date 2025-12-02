@@ -236,10 +236,18 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      appBar: AppBar(
+        title: const Text("Style"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             // Tabs
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -498,7 +506,7 @@ class _StyleScreenState extends State<StyleScreen> with TickerProviderStateMixin
             ),
           ],
         ),
-      ),
+
     );
   }
 

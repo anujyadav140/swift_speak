@@ -27,7 +27,7 @@ class StatsService {
     });
   }
 
-  Future<void> updateStats(int newWords, Duration duration) async {
+  Future<void> updateStats(int newWords, Duration duration, {String? packageName}) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -66,11 +66,19 @@ class StatsService {
         newStreak = 1; // First day
       }
 
+      // Update Apps Used
+      List<String> currentApps = List.from(currentStats.usedAppPackages);
+      if (packageName != null && packageName.isNotEmpty && !currentApps.contains(packageName)) {
+        currentApps.add(packageName);
+      }
+
       final updatedStats = UserStats(
         currentStreak: newStreak,
         lastActiveDate: now,
         totalWords: currentStats.totalWords + newWords,
         totalDurationSeconds: currentStats.totalDurationSeconds + duration.inSeconds,
+        totalAppsUsed: currentApps.length,
+        usedAppPackages: currentApps,
       );
 
       transaction.set(docRef, updatedStats.toMap());

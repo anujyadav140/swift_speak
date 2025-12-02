@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:firebase_vertexai/firebase_vertexai.dart';
 import 'package:flutter/foundation.dart';
+import 'calendar_service.dart';
 import 'dictionary_service.dart';
 import '../models/snippet.dart';
 
@@ -92,6 +94,148 @@ class GeminiService {
     }).toList();
   }
 
+  final CalendarService _calendarService = CalendarService();
+
+  Future<AnalysisResult> analyzeScreenshot(String path, {Function(String)? onStatusUpdate}) async {
+    final file = File(path);
+    if (!await file.exists()) return AnalysisResult(text: "Error: Screenshot not found.");
+    
+    final imageBytes = await file.readAsBytes();
+    final now = DateTime.now();
+
+    // Tool definition
+    final checkAvailabilityTool = FunctionDeclaration(
+      'checkAvailability',
+      'Checks the user\'s calendar availability for a specific time range.',
+      parameters: {
+        'start': Schema.string(description: 'Start time in ISO 8601 format (e.g., 2023-10-27T14:00:00)'),
+        'end': Schema.string(description: 'End time in ISO 8601 format'),
+      },
+    );
+
+    final proposeEventTool = FunctionDeclaration(
+      'proposeEvent',
+      'Proposes a new calendar event to be added.',
+      parameters: {
+        'title': Schema.string(description: 'Title of the event'),
+        'start': Schema.string(description: 'Start time in ISO 8601 format'),
+        'end': Schema.string(description: 'End time in ISO 8601 format'),
+      },
+    );
+
+    final model = FirebaseVertexAI.instance.generativeModel(
+      model: 'gemini-2.0-flash',
+      tools: [Tool.functionDeclarations([checkAvailabilityTool, proposeEventTool])],
+    );
+
+    final chat = model.startChat();
+    
+    onStatusUpdate?.call("Reading message...");
+
+    final prompt = Content.multi([
+      TextPart("You are a smart scheduling assistant. The user received a message shown in this screenshot. "
+               "CRITICAL RULES:\n"
+               "1. Identify if there is a scheduling request (e.g., 'Are you free Friday?').\n"
+               "2. If a time is mentioned or implied, you MUST use the `checkAvailability` tool. Do NOT guess availability. WAIT for the tool result.\n"
+               "3. Infer the date/time from the context (assume current year if not specified). Today is $now.\n"
+               "4. If `checkAvailability` shows the user is free, you MUST use `proposeEvent` to suggest adding it. This is MANDATORY for positive replies.\n"
+               "5. Return a JSON object with the following fields:\n"
+               "   - 'explanation': A brief status (e.g., 'You are free.'). MUST match the `checkAvailability` result. If busy, say 'Busy'.\n"
+               "   - 'replyMessage': A definitive, polite reply to send (e.g., 'Yes, I'm free then.'). MUST be consistent with availability.\n"
+               "   - 'conflictingEvent': If busy, the title of the conflicting event from the tool result. Otherwise null.\n"
+               "6. Do NOT use conversational filler like 'Let me check my availability'. State the answer directly (e.g., 'You are free at 3pm').\n"
+               "7. CRITICAL: Do NOT generate the JSON until you have received the `checkAvailability` result. Do NOT contradict the tool result.\n"
+               "Do NOT use markdown formatting for the JSON."),
+      InlineDataPart('image/png', imageBytes),
+    ]);
+
+    var response = await chat.sendMessage(prompt);
+    EventProposal? proposedEvent;
+
+    // Handle tool calls loop
+    while (response.functionCalls.isNotEmpty) {
+      final functionCalls = response.functionCalls;
+      debugPrint("GeminiService: Received function calls: ${functionCalls.map((c) => c.name).toList()}");
+      final functionResponses = <FunctionResponse>[];
+
+      for (var call in functionCalls) {
+        if (call.name == 'checkAvailability') {
+          onStatusUpdate?.call("Checking calendar...");
+          final startStr = call.args['start'] as String?;
+          final endStr = call.args['end'] as String?;
+          
+          if (startStr != null && endStr != null) {
+            final start = DateTime.tryParse(startStr);
+            final end = DateTime.tryParse(endStr);
+            
+            if (start != null && end != null) {
+              debugPrint("Checking availability: $start to $end");
+              final result = await _calendarService.checkAvailability(start, end);
+              debugPrint("Availability result: $result");
+              functionResponses.add(FunctionResponse(call.name, {'result': result}));
+            } else {
+              functionResponses.add(FunctionResponse(call.name, {'error': 'Invalid date format'}));
+            }
+          } else {
+            functionResponses.add(FunctionResponse(call.name, {'error': 'Missing arguments'}));
+          }
+        } else if (call.name == 'proposeEvent') {
+          onStatusUpdate?.call("Drafting event...");
+          final title = call.args['title'] as String?;
+          final startStr = call.args['start'] as String?;
+          final endStr = call.args['end'] as String?;
+          
+          debugPrint("Proposing event: $title, $startStr, $endStr");
+          
+          if (title != null && startStr != null && endStr != null) {
+            proposedEvent = EventProposal(
+              title: title,
+              start: DateTime.parse(startStr),
+              end: DateTime.parse(endStr),
+            );
+            functionResponses.add(FunctionResponse(call.name, {'status': 'proposal_captured'}));
+          }
+        }
+      }
+      
+      onStatusUpdate?.call("Finalizing...");
+      response = await chat.sendMessage(Content.functionResponses(functionResponses));
+    }
+
+    String explanation = "Could not analyze.";
+    String replyMessage = "";
+    String? conflictingEvent;
+
+    try {
+      final text = response.text?.replaceAll('```json', '').replaceAll('```', '').trim() ?? "{}";
+      
+      final expMatch = RegExp(r'"explanation":\s*"(.*?)"').firstMatch(text);
+      if (expMatch != null) explanation = expMatch.group(1) ?? "";
+      
+      final replyMatch = RegExp(r'"replyMessage":\s*"(.*?)"').firstMatch(text);
+      if (replyMatch != null) replyMessage = replyMatch.group(1) ?? "";
+      
+      final conflictMatch = RegExp(r'"conflictingEvent":\s*"(.*?)"').firstMatch(text);
+      if (conflictMatch != null) conflictingEvent = conflictMatch.group(1);
+      
+      if (explanation.isEmpty && text.isNotEmpty && !text.startsWith("{")) {
+         explanation = text;
+      }
+      
+    } catch (e) {
+      debugPrint("Error parsing JSON response: $e");
+      explanation = response.text ?? "Error";
+    }
+
+    return AnalysisResult(
+      text: explanation,
+      replyMessage: replyMessage,
+      conflictingEvent: conflictingEvent,
+      proposedEvent: proposedEvent,
+    );
+  }
+
+
   Future<String> formatText(String text, {
     List<DictionaryTerm> userTerms = const [], 
     List<Snippet> snippets = const [],
@@ -165,4 +309,26 @@ class GeminiService {
       return text;
     }
   }
+}
+
+class AnalysisResult {
+  final String text;
+  final String replyMessage;
+  final String? conflictingEvent;
+  final EventProposal? proposedEvent;
+
+  AnalysisResult({
+    required this.text, 
+    this.replyMessage = "",
+    this.conflictingEvent,
+    this.proposedEvent
+  });
+}
+
+class EventProposal {
+  final String title;
+  final DateTime start;
+  final DateTime end;
+
+  EventProposal({required this.title, required this.start, required this.end});
 }

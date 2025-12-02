@@ -65,91 +65,101 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = Theme.of(context).textTheme.bodyMedium?.color;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header / Search
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _isSearching
-                ? Container(
-                    key: const ValueKey('searchBar'),
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[900] : Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.search, color: Colors.grey),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            autofocus: true,
-                            style: TextStyle(color: textColor),
-                            decoration: const InputDecoration(
-                              hintText: "Search vocabulary...",
-                              border: InputBorder.none,
-                              hintStyle: TextStyle(color: Colors.grey),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Dictionary"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header / Search
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _isSearching
+                  ? Container(
+                      key: const ValueKey('searchBar'),
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.grey[900] : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search, color: Colors.grey),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: true,
+                              style: TextStyle(color: textColor),
+                              decoration: const InputDecoration(
+                                hintText: "Search vocabulary...",
+                                border: InputBorder.none,
+                                hintStyle: TextStyle(color: Colors.grey),
+                              ),
+                              onChanged: (value) {
+                                setState(() {}); // Trigger rebuild to filter list
+                              },
                             ),
-                            onChanged: (value) {
-                              setState(() {}); // Trigger rebuild to filter list
-                            },
                           ),
-                        ),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _isSearching = false;
+                                _searchController.clear();
+                              });
+                            },
+                            icon: const Icon(Icons.close, color: Colors.grey),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Row(
+                      key: const ValueKey('header'),
+                      children: [
+                        _buildTab("All", true),
+                        const Spacer(),
                         IconButton(
                           onPressed: () {
                             setState(() {
-                              _isSearching = false;
-                              _searchController.clear();
+                              _isSearching = true;
                             });
                           },
-                          icon: const Icon(Icons.close, color: Colors.grey),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.search),
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () => _toggleAddForm(),
+                          icon: Icon(Icons.add, size: MediaQuery.of(context).size.width * 0.0495), // 18 -> 0.0495
+                          label: Text(
+                            "Add new",
+                            style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.0385), // 14 -> 0.0385
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark ? Colors.white : Colors.black,
+                            foregroundColor: isDark ? Colors.black : Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          ),
                         ),
                       ],
                     ),
-                  )
-                : Row(
-                    key: const ValueKey('header'),
-                    children: [
-                      _buildTab("All", true),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _isSearching = true;
-                          });
-                        },
-                        icon: const Icon(Icons.search),
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: () => _toggleAddForm(),
-                        icon: Icon(Icons.add, size: MediaQuery.of(context).size.width * 0.0495), // 18 -> 0.0495
-                        label: Text(
-                          "Add new",
-                          style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.0385), // 14 -> 0.0385
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isDark ? Colors.white : Colors.black,
-                          foregroundColor: isDark ? Colors.black : Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-          const SizedBox(height: 24),
+            ),
+            const SizedBox(height: 24),
 
             // Banner
             if (_showBanner && !_isSearching) // Hide banner when searching to focus on results
@@ -367,8 +377,8 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
             ),
           ],
         ),
-    );
-  }
+      ),
+    );}
 
   Widget _buildTab(String text, bool isSelected) {
     final width = MediaQuery.of(context).size.width;
