@@ -131,8 +131,11 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
   }
 
   Future<void> _handleScreenshot(String path) async {
-    debugPrint("KeyboardPage: Handling screenshot: $path");
-    if (!mounted) return;
+    debugPrint("KeyboardPage: _handleScreenshot called with path: $path");
+    if (!mounted) {
+      debugPrint("KeyboardPage: _handleScreenshot - not mounted, returning.");
+      return;
+    }
     
     setState(() {
       _isAnalyzingScreenshot = true;
@@ -268,13 +271,7 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
       if (mounted) {
         setState(() {
           String newText = result.recognizedWords;
-          // Check if the new text starts with what we've already accumulated.
-          // This happens if the speech engine keeps history across our manual "stops".
-          if (_accumulatedText.isNotEmpty && newText.startsWith(_accumulatedText)) {
-            _currentText = newText.substring(_accumulatedText.length).trim();
-          } else {
-            _currentText = newText;
-          }
+          _currentText = _extractNewText(_accumulatedText, newText);
 
           if (result.finalResult) {
              _accumulatedText = "$_accumulatedText $_currentText".trim();
@@ -389,15 +386,24 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
     
     String formattedText;
 
-    if (selectedModel == 'Llama 3.2 1B Q4') {
-      debugPrint("KeyboardPage: Using Local Model: Llama 3.2 1B Q4");
+    if (selectedModel != 'Gemini 2.0 Flash Lite') {
+      debugPrint("KeyboardPage: Using Local Model: $selectedModel");
+      
+      String modelFileName = 'llama-3.2-1b-q4.gguf'; // Default
+      if (selectedModel == 'Gemma 2 2B IT Q4') {
+        modelFileName = 'gemma-2-2b-it-Q4_K_M.gguf';
+      } else if (selectedModel == 'Qwen 2.5 1.5B Instruct') {
+        modelFileName = 'qwen2.5-1.5b-instruct-q4_k_m.gguf';
+      }
+
       try {
-        await _localLLMService.loadModel('llama-3.2-1b-q4.gguf');
+        await _localLLMService.loadModel(modelFileName);
         formattedText = await _localLLMService.formatText(
           fullText,
           userTerms: _userTerms,
           snippets: _snippets,
           styleInstruction: styleInstruction,
+          modelName: selectedModel, // Pass model name for template selection
         );
       } catch (e) {
         debugPrint("Local Model Error: $e. Falling back to Cloud.");
@@ -471,6 +477,80 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
     } catch (e) {
       debugPrint("Error opening settings: $e");
     }
+  }
+
+  String _extractNewText(String accumulated, String newText) {
+    if (accumulated.isEmpty) return newText;
+    
+    // Normalize strings for comparison (lowercase, trim)
+    final normalizedAccumulated = accumulated.toLowerCase().trim();
+    final normalizedNew = newText.toLowerCase().trim();
+
+    // 1. Exact Prefix Match
+    if (normalizedNew.startsWith(normalizedAccumulated)) {
+      return newText.substring(accumulated.length).trim();
+    }
+
+    // 2. Word-based Overlap Check (Robust)
+    // This handles cases where the engine might change punctuation or slight wording in the history
+    final accWords = normalizedAccumulated.split(RegExp(r'\s+'));
+    final newWords = normalizedNew.split(RegExp(r'\s+'));
+
+    // If new text is shorter than accumulated, it's likely fresh text (or a weird reset).
+    // We assume it's fresh to avoid losing data, unless it's a pure subset.
+    if (newWords.length < accWords.length) {
+       // Check if new text is just a suffix of accumulated (duplicate event)
+       if (normalizedAccumulated.endsWith(normalizedNew)) {
+         return ""; // Ignore duplicate
+       }
+       return newText;
+    }
+
+    // Check if the start of newWords matches accWords
+    bool isPrefix = true;
+    for (int i = 0; i < accWords.length; i++) {
+      if (newWords[i] != accWords[i]) {
+        isPrefix = false;
+        break;
+      }
+    }
+
+    if (isPrefix) {
+      // Reconstruct the non-overlapping part from the original string
+      if (newText.length >= accumulated.length) {
+         final suffixWords = newText.trim().split(RegExp(r'\s+')).sublist(accWords.length);
+         return suffixWords.join(' ');
+      }
+    }
+
+    // 3. Tail-Head Overlap Check (Segment Merging)
+    // Check if the END of accumulated matches the START of newText
+    // This handles cases where the engine sends "A B C" then "C D E" (overlap "C")
+    // We only strip if overlap is significant (>= 2 words) to avoid stripping intentional repetitions like "really really"
+    int maxOverlap = 0;
+    final int maxCheck = math.min(accWords.length, newWords.length);
+    
+    for (int i = 1; i <= maxCheck; i++) {
+      // Check if last i words of acc match first i words of new
+      bool match = true;
+      for (int j = 0; j < i; j++) {
+        if (accWords[accWords.length - i + j] != newWords[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        maxOverlap = i;
+      }
+    }
+
+    if (maxOverlap >= 2) {
+       // Strip the first maxOverlap words from newText
+       final suffixWords = newWords.sublist(maxOverlap);
+       return suffixWords.join(' ');
+    }
+
+    return newText;
   }
 
   @override
@@ -947,30 +1027,93 @@ class MicButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: isListening ? Colors.white : Colors.transparent,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: [
-            if (isListening)
-              BoxShadow(
-                color: Colors.white.withOpacity(0.5),
-                blurRadius: 15,
-                spreadRadius: 2,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Beam Animation (Only when NOT listening)
+          if (!isListening)
+            SizedBox(
+              width: 72,
+              height: 72,
+              child: CustomPaint(
+                painter: BeamBorderPainter(animation: animationController),
               ),
-          ],
-        ),
-        child: Icon(
-          isListening ? Icons.stop : Icons.mic,
-          color: isListening ? Colors.black : Colors.white,
-          size: 32,
-        ),
+            ),
+
+          // Button Container
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // When listening: Transparent bg, White border
+              // When idle: Transparent bg, No border (Beam handles it)
+              color: Colors.transparent, 
+              border: isListening 
+                  ? Border.all(color: Colors.white, width: 2) 
+                  : null, 
+              // BoxShadow removed as requested
+            ),
+            child: Icon(
+              Icons.mic, // Always mic icon as requested
+              color: Colors.white,
+              size: 32,
+            ),
+          ),
+        ],
       ),
     );
+  }
+}
+
+class BeamBorderPainter extends CustomPainter {
+  final Animation<double> animation;
+
+  BeamBorderPainter({required this.animation}) : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final center = Offset(size.width / 2, size.height / 2);
+    // Reduce radius slightly to ensure the 1px stroke is fully visible and not clipped
+    // Radius 36 puts the stroke center at the edge. 
+    // We want the outer edge of the stroke to be at most 36.
+    // So radius + 0.5 <= 36. Radius <= 35.5.
+    // Let's use 35.0 to be safe and give it a bit of breathing room.
+    final radius = (size.width / 2) - 2.0;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5; // Slightly thicker than 1px for better visibility
+
+    // Create a sweep gradient for the beam effect
+    final startAngle = animation.value * 2 * math.pi;
+    
+    final gradient = SweepGradient(
+      startAngle: 0.0,
+      endAngle: 2 * math.pi,
+      colors: const [
+        Colors.transparent,
+        Colors.white,
+        Colors.transparent,
+      ],
+      stops: const [
+        0.2, // Start fading in later
+        0.5, // Peak
+        0.8, // End fading out earlier
+      ],
+      transform: GradientRotation(startAngle),
+    );
+
+    paint.shader = gradient.createShader(rect);
+
+    canvas.drawCircle(center, radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(BeamBorderPainter oldDelegate) {
+    return oldDelegate.animation != animation;
   }
 }
 
@@ -989,58 +1132,64 @@ class DigitalWaveformPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
+      ..style = PaintingStyle.fill;
 
-    final centerY = size.height / 2;
-    final maxAmplitude = size.height * 0.4; // Keep it within bounds
     final width = size.width;
+    final height = size.height;
+    final centerY = height / 2;
     
-    final path = Path();
-    path.moveTo(0, centerY);
+    // Number of bars
+    const int barCount = 5;
+    // Spacing between bars
+    const double spacing = 10.0; // Increased to 10.0
+    // Total width of all bars and spacing
+    // We want them centered.
+    // Let's say each bar is 12px wide.
+    const double barWidth = 12.0; // Increased to 12.0
     
-    // Draw a sine wave that reacts to sound level
-    // Use a base amplitude so it's not a flat line when silent, but very subtle
-    final baseAmplitude = 2.0;
-    final dynamicAmplitude = maxAmplitude * level;
+    final totalBarWidth = (barCount * barWidth) + ((barCount - 1) * spacing);
+    final startX = (width - totalBarWidth) / 2;
     
-    for (double x = 0; x <= width; x += 2) {
-      final normalizedX = x / width;
+    for (int i = 0; i < barCount; i++) {
+      // Calculate height for this bar
+      // Center bar is tallest, outer bars shorter
+      // Base height + dynamic height based on level
       
-      // Create a window function (Hanning window) to taper the ends
-      final window = 0.5 * (1 - math.cos(2 * math.pi * normalizedX));
+      double scaleFactor;
+      // Simple bell curve-ish scaling for 5 bars: 0.6, 0.8, 1.0, 0.8, 0.6
+      if (i == 0 || i == 4) {
+        scaleFactor = 0.6;
+      } else if (i == 1 || i == 3) {
+        scaleFactor = 0.8;
+      } else {
+        scaleFactor = 1.0;
+      }
       
-      // Calculate wave
-      final phase = animation.value * 2 * math.pi;
-      final sine = math.sin((normalizedX * 10 * math.pi) - phase);
+      // Animate slightly with the animation controller to keep it alive even when silent
+      // Removed breathing animation as requested to avoid "squiggles"
+      // final breathing = 0.1 * math.sin((animation.value * 2 * math.pi) + (i * 0.5));
       
-      final y = centerY + (baseAmplitude + dynamicAmplitude) * sine * window;
-      path.lineTo(x, y);
+      // Dynamic height based on sound level
+      // Max height is maybe 40px
+      final dynamicHeight = 40.0 * level * scaleFactor;
+      final baseHeight = 10.0 * scaleFactor; // Minimum height
+      
+      final barHeight = baseHeight + dynamicHeight; // + (baseHeight * breathing);
+      
+      final x = startX + (i * (barWidth + spacing));
+      final top = centerY - (barHeight / 2);
+      final bottom = centerY + (barHeight / 2);
+      
+      final rrect = RRect.fromLTRBR(
+        x, 
+        top, 
+        x + barWidth, 
+        bottom, 
+        const Radius.circular(3.0),
+      );
+      
+      canvas.drawRRect(rrect, paint);
     }
-    
-    canvas.drawPath(path, paint);
-    
-    // Draw a second, fainter wave for effect
-    final paint2 = Paint()
-      ..color = color.withOpacity(0.3)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
-
-    final path2 = Path();
-    path2.moveTo(0, centerY);
-    
-    for (double x = 0; x <= width; x += 2) {
-      final normalizedX = x / width;
-      final window = 0.5 * (1 - math.cos(2 * math.pi * normalizedX));
-      final phase = animation.value * 2 * math.pi + math.pi / 4; // Phase shift
-      final sine = math.sin((normalizedX * 8 * math.pi) + phase); // Different frequency
-      
-      final y = centerY + (baseAmplitude + dynamicAmplitude * 0.8) * sine * window;
-      path2.lineTo(x, y);
-    }
-    
-    canvas.drawPath(path2, paint2);
   }
 
   @override

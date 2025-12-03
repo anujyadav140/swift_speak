@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'tips_data.dart';
 
 class QuickTipsCarousel extends StatefulWidget {
   final bool showDismissButton;
   final VoidCallback? onDismiss;
+  final List<Map<String, dynamic>> tips;
 
   const QuickTipsCarousel({
     super.key, 
     this.showDismissButton = true,
     this.onDismiss,
+    required this.tips,
   });
 
   @override
@@ -18,35 +21,6 @@ class QuickTipsCarousel extends StatefulWidget {
 class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-
-  final List<Map<String, dynamic>> _tips = [
-    {
-      "title": "Step 1: Settings",
-      "description": "Go to Settings > System",
-      "icon": Icons.settings,
-    },
-    {
-      "title": "Step 2: Manage Keyboards",
-      "description": "Tap 'Keyboard' > 'On-screen keyboard'",
-      "icon": Icons.keyboard,
-    },
-    {
-      "title": "Step 3: Enable Swift Speak",
-      "description": "Toggle 'Swift Speak' ON",
-      "icon": Icons.toggle_on,
-    },
-    {
-      "title": "Step 4: Trust",
-      "description": "Tap 'OK' to trust the keyboard",
-      "icon": Icons.check_circle,
-    },
-    {
-      "title": "Step 5: Switch Keyboard",
-      "description": "Tap 🌐 icon below the Gboard to switch to Swift Speak",
-      "icon": Icons.language,
-      "image": "assets/images/globe_instruction.png",
-    },
-  ];
 
   @override
   void dispose() {
@@ -91,11 +65,11 @@ class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
                 _currentPage = index;
               });
             },
-            itemCount: _tips.length,
+            itemCount: widget.tips.length,
             itemBuilder: (context, index) {
-              final tip = _tips[index];
+              final tip = widget.tips[index];
               return Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 50), // Increased bottom padding for dots/icon
+                padding: EdgeInsets.fromLTRB(24, 24, 24, widget.tips.length > 1 ? 50 : 24), // Increased bottom padding for dots/icon only if needed
                 child: Stack(
                   children: [
                     Column(
@@ -135,7 +109,9 @@ class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
                       child: Center(
                         child: tip.containsKey("image")
                             ? Padding(
-                                padding: const EdgeInsets.only(top:30),
+                                padding: EdgeInsets.only(
+                                  top: tip["title"] == "Step 5: Switch Keyboard" ? 70 : 40,
+                                ),
                                 child: Image.asset(
                                   tip["image"] as String,
                                   height: screenWidth * 0.21,
@@ -146,7 +122,7 @@ class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
                                 tip["icon"] as IconData,
                                 size: iconSize,
                                 color: Colors.white24,
-                              ),
+                                ),
                       ),
                     ),
                   ],
@@ -156,58 +132,60 @@ class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
           ),
           
           // Dots Indicator
-          Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_tips.length, (index) {
-                return Container(
-                  width: 8,
-                  height: 8,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _currentPage == index
-                        ? Colors.white
-                        : Colors.white.withOpacity(0.3),
-                  ),
-                );
-              }),
+          if (widget.tips.length > 1)
+            Positioned(
+              bottom: 16,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(widget.tips.length, (index) {
+                  return Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentPage == index
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.3),
+                    ),
+                  );
+                }),
+              ),
             ),
-          ),
 
           // Next/Finish Button (Bottom Right)
-          Positioned(
-            bottom: 12,
-            right: 16,
-            child: TextButton(
-              onPressed: () {
-                if (_currentPage < _tips.length - 1) {
-                  _pageController.nextPage(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
-                } else {
-                  // Finish action: Redirect to first page
-                  _pageController.animateToPage(
-                    0,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
-                }
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                textStyle: TextStyle(
-                  fontSize: descSize, // Match description size
-                  fontWeight: FontWeight.bold,
+          if (widget.tips.length > 1)
+            Positioned(
+              bottom: 12,
+              right: 16,
+              child: TextButton(
+                onPressed: () {
+                  if (_currentPage < widget.tips.length - 1) {
+                    _pageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  } else {
+                    // Finish action: Redirect to first page
+                    _pageController.animateToPage(
+                      0,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  textStyle: TextStyle(
+                    fontSize: descSize, // Match description size
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+                child: Text(_currentPage == widget.tips.length - 1 ? "Finish" : "Next"),
               ),
-              child: Text(_currentPage == _tips.length - 1 ? "Finish" : "Next"),
             ),
-          ),
 
           // Dismiss Button (Top Right) - Bigger 'X' Icon
           if (widget.showDismissButton)

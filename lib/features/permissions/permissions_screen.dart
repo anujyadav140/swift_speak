@@ -35,12 +35,23 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
   Future<void> _checkPermissions() async {
     final micStatus = await Permission.microphone.status;
     
-    // Check storage (different for Android 13+)
-    PermissionStatus storageStatus;
-    if (await Permission.mediaLibrary.status.isGranted || await Permission.storage.status.isGranted || await Permission.photos.status.isGranted) {
-       storageStatus = PermissionStatus.granted;
-    } else {
-       storageStatus = await Permission.storage.status;
+    // Check storage/photos status
+    // Prioritize photos for Android 13+
+    PermissionStatus storageStatus = await Permission.photos.status;
+    
+    if (!storageStatus.isGranted && !storageStatus.isLimited) {
+      // Fallback to storage if photos is not relevant/granted
+      final legacyStorage = await Permission.storage.status;
+      if (legacyStorage.isGranted) {
+        storageStatus = PermissionStatus.granted;
+      } else if (legacyStorage.isPermanentlyDenied) {
+        storageStatus = PermissionStatus.permanentlyDenied;
+      }
+      // If photos is denied but storage is denied, keep photos status or use storage?
+      // Let's stick to the most relevant one.
+      if (storageStatus.isDenied && legacyStorage.isDenied) {
+         storageStatus = PermissionStatus.denied;
+      }
     }
 
     if (mounted) {
@@ -52,28 +63,27 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
   }
 
   Future<void> _handleMicPermission() async {
-    if (_micStatus.isGranted) return;
-    if (_micStatus.isPermanentlyDenied) {
-      await openAppSettings();
-    } else {
+    // Always request first, even if limited/granted (might upgrade limited)
+    if (!_micStatus.isPermanentlyDenied) {
       final status = await Permission.microphone.request();
       if (mounted) setState(() => _micStatus = status);
+      return;
     }
+    await openAppSettings();
   }
 
   Future<void> _handleStoragePermission() async {
-    if (_storageStatus.isGranted) return;
-
-    if (_storageStatus.isPermanentlyDenied) {
-      await openAppSettings();
-    } else {
+    // Always request first
+    if (!_storageStatus.isPermanentlyDenied) {
       Map<Permission, PermissionStatus> statuses = await [
         Permission.storage,
         Permission.photos,
       ].request();
       
       if (mounted) _checkPermissions();
+      return;
     }
+    await openAppSettings();
   }
 
   Future<void> _handleCalendarAuth() async {
@@ -170,28 +180,25 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
     required Color textColor,
     required bool isDark,
   }) {
-    final color = isConnected ? Colors.green : Colors.blue;
-    final statusText = isConnected ? "Connected" : "Tap to Connect";
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 8), // Compact margin
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Compact padding
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.grey[100],
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16), // Slightly smaller radius
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10), // Compact icon padding
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05), // Neutral bg
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: Icon(icon, color: textColor, size: 24), // Neutral icon color
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -202,34 +209,36 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
                     title,
                     style: TextStyle(
                       color: textColor,
-                      fontSize: MediaQuery.of(context).size.width * 0.0495,
+                      fontSize: 18, // Fixed size
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     description,
                     style: TextStyle(
                       color: Colors.grey,
-                      fontSize: MediaQuery.of(context).size.width * 0.0385,
+                      fontSize: 14, // Fixed size
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    statusText,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                      fontSize: MediaQuery.of(context).size.width * 0.0385,
+                  if (!isConnected) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      "Tap to Connect",
+                      style: const TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
             if (isConnected)
-              const Icon(Icons.check_circle, color: Colors.green)
+              const Icon(Icons.check, color: Colors.green, size: 24) // Green checkmark only
             else
-              const Icon(Icons.chevron_right, color: Colors.grey),
+              const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
           ],
         ),
       ),
@@ -246,28 +255,38 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
     required bool isDark,
   }) {
     final isGranted = status.isGranted;
-    final color = isGranted ? Colors.green : (status.isPermanentlyDenied ? Colors.red : Colors.orange);
-    final statusText = isGranted ? "Granted" : (status.isPermanentlyDenied ? "Denied (Open Settings)" : "Tap to Allow");
+    final isLimited = status.isLimited;
+    
+    // Treat limited as a warning state
+    final color = isGranted 
+        ? Colors.green 
+        : (isLimited ? Colors.orange : (status.isPermanentlyDenied ? Colors.red : Colors.orange));
+        
+    final statusText = isGranted 
+        ? "Granted" 
+        : (isLimited 
+            ? "Partial Access (Tap to Allow All)" 
+            : (status.isPermanentlyDenied ? "Denied (Open Settings)" : "Tap to Allow"));
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 8), // Compact margin
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Compact padding
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.grey[100],
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05), // Neutral bg
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: Icon(icon, color: textColor, size: 24), // Neutral icon color
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -278,34 +297,38 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
                     title,
                     style: TextStyle(
                       color: textColor,
-                      fontSize: MediaQuery.of(context).size.width * 0.0495, // 18 -> 0.0495
+                      fontSize: 18, // Fixed size
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     description,
                     style: TextStyle(
                       color: Colors.grey,
-                      fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
+                      fontSize: 14, // Fixed size
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    statusText,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                      fontSize: MediaQuery.of(context).size.width * 0.0385, // 14 -> 0.0385
+                  if (!isGranted || isLimited) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-            if (isGranted)
-              const Icon(Icons.check_circle, color: Colors.green)
+            if (isGranted && !isLimited)
+              const Icon(Icons.check, color: Colors.green, size: 24) // Green checkmark only if fully granted
+            else if (isLimited)
+              const Icon(Icons.warning_amber, color: Colors.orange, size: 24)
             else
-              const Icon(Icons.chevron_right, color: Colors.grey),
+              const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
           ],
         ),
       ),

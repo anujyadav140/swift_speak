@@ -22,10 +22,11 @@ class GeminiService {
         '1. Fix grammar, spelling, and punctuation errors ONLY.\n'
         '2. Do NOT change the user\'s vocabulary. Do NOT rewrite sentences to be more "polite" or "formal".\n'
         '3. If the style is "Formal", it refers ONLY to standard capitalization and punctuation. Do NOT change "Bro" to "Sir" or "Thanks" to "Thank you".\n'
-        '4. Remove filler words (um, ah) unless the style is "Verbatim".\n'
+        '4. Remove filler words (um, ah, like, you know) and stuttering (e.g., "I I went").\n'
         '5. Return ONLY the edited text. Do NOT add quotes or explanations.\n'
         '6. Do NOT convert text to ALL CAPS unless explicitly asked.\n'
         '7. Do NOT wrap the entire output in quotation marks unless the input itself is a quote.\n'
+        '8. STREAMLINE REPETITION: If the input contains repetitive phrases back-to-back (e.g., "to get what you want to get what you want"), COMBINE them into a single, concise phrase. Focus on economy of sentences.\n'
       ),
     );
 
@@ -279,6 +280,7 @@ class GeminiService {
     ];
 
     debugPrint("GeminiService: Sending prompt (Relevant Snippets: ${relevantSnippets.length}, Relevant Terms: ${relevantTerms.length}, Style: ${styleInstruction.isNotEmpty})...");
+    debugPrint("GeminiService: Input Text: $text");
 
     try {
       final response = await _model.generateContent(prompt);
@@ -303,11 +305,89 @@ class GeminiService {
          }
       }
 
+      // Repetition Removal Logic (Phrase-level)
+      // Detects phrases of 3+ words that repeat consecutively
+      // Increased max length to 30 to catch longer sentence repetitions
+      final words = cleanedText.split(' ');
+      if (words.length > 6) {
+        for (int i = 0; i < words.length; i++) {
+          for (int len = 3; len <= 30 && i + 2 * len <= words.length; len++) {
+             String phrase1 = words.sublist(i, i + len).join(' ');
+             String phrase2 = words.sublist(i + len, i + 2 * len).join(' ');
+             
+             if (phrase1.toLowerCase() == phrase2.toLowerCase()) {
+               // Found repetition! Remove the second occurrence.
+               cleanedText = words.sublist(0, i + len).join(' ') + " " + words.sublist(i + 2 * len).join(' ');
+               break; 
+             }
+          }
+        }
+      }
+      
+      // Sentence-level Deduplication
+      cleanedText = _deduplicateSentences(cleanedText);
+
       return cleanedText;
     } catch (e) {
       debugPrint("Gemini Error: $e");
       return text;
     }
+  }
+
+  String _deduplicateSentences(String text) {
+    // Split by common sentence terminators
+    final sentences = text.split(RegExp(r'(?<=[.!?])\s+'));
+    if (sentences.length < 2) return text;
+
+    final List<String> uniqueSentences = [];
+    String? lastSentence;
+
+    for (final sentence in sentences) {
+      if (lastSentence == null) {
+        uniqueSentences.add(sentence);
+        lastSentence = sentence;
+        continue;
+      }
+
+      // Check similarity
+      if (_areSentencesSimilar(lastSentence, sentence)) {
+        // Keep the longer one (usually contains more detail)
+        if (sentence.length > lastSentence.length) {
+          uniqueSentences.removeLast();
+          uniqueSentences.add(sentence);
+          lastSentence = sentence;
+        }
+        // Else ignore the new one (it's a subset/duplicate)
+      } else {
+        uniqueSentences.add(sentence);
+        lastSentence = sentence;
+      }
+    }
+
+    return uniqueSentences.join(' ');
+  }
+
+  bool _areSentencesSimilar(String s1, String s2) {
+    final w1 = s1.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '').split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+    final w2 = s2.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '').split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+
+    if (w1.isEmpty || w2.isEmpty) return false;
+
+    final intersection = w1.intersection(w2).length;
+    final union = w1.union(w2).length;
+    
+    // Jaccard Similarity > 0.7 means they are very similar
+    // Also check if one is a subset of the other (intersection == smaller set size)
+    final smallerSize = w1.length < w2.length ? w1.length : w2.length;
+    
+    if (union == 0) return false;
+    
+    double jaccard = intersection / union;
+    
+    // If one is almost entirely contained in the other
+    bool isSubset = intersection >= (smallerSize * 0.9); 
+
+    return jaccard > 0.7 || isSubset;
   }
 }
 

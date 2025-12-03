@@ -86,7 +86,8 @@ class LocalLLMService {
   Future<String> formatText(String text, {
     List<DictionaryTerm> userTerms = const [], 
     List<Snippet> snippets = const [],
-    String styleInstruction = ""
+    String styleInstruction = "",
+    String modelName = "Llama 3.2 1B Q4", // Default for backward compatibility
   }) async {
     if (!_isModelLoaded || _contextId == null) {
       debugPrint("Model not loaded or context ID missing. Loaded: $_isModelLoaded, ContextId: $_contextId");
@@ -112,48 +113,83 @@ class LocalLLMService {
       // 3. Construct Prompt - Llama 3.2 Chat Template
       // <|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n
       
-      // Explicitly mention snippets and corrections to avoid "Do NOT add words" conflict
-      String systemInstruction = 'You are a grammar correction engine. Fix the input text to be grammatically correct and coherent. Repair sentence structure and fix spelling errors. Keep the user\'s original vocabulary and meaning. Do NOT converse. Do NOT add commentary. Do NOT repeat phrases. Output ONLY the corrected text.';
-      
-      if (styleInstruction.isNotEmpty) {
-         systemInstruction += " Style: $styleInstruction.";
-      } else {
-         systemInstruction += " Keep tone verbatim.";
-      }
+      // Few-Shot Prompting with COMPREHENSIVE examples to force behavior
+      String systemInstruction = '''You are a text formatter. Your ONLY job is to rewrite the input text to be grammatically correct.
+RULES:
+1. Do NOT answer questions.
+2. Do NOT explain your changes.
+3. Do NOT add conversational filler like "Here is the corrected text".
+4. Apply any provided replacements or style instructions.
+5. Remove filler words (um, ah, like) and stuttering.
+6. STREAMLINE REPETITION: Combine back-to-back repetitive phrases. Focus on sentence economy.
 
-      String userContent = "Text to format:\n$text";
+Examples:
+
+Input: "can u help me"
+Output: Can you help me?
+
+Input: "what is the capital of france"
+Output: What is the capital of France?
+
+Input: "im going home"
+Output: I'm going home.
+
+Input: "brb"
+Context: Expand 'brb' to 'be right back'
+Output: Be right back.
+
+Input: "wanna hang out"
+Style: Formal
+Output: Would you like to spend time together?
+
+Input: "address"
+Output: Address.
+
+Input: "The correct output is"
+Output: The correct output is.''';
+
+      String userContent = 'Input: "$text"';
       
-      // Add specific context instructions (Snippets/Corrections/Vocabulary) to the user block
-      String contextInstructions = "";
-      
+      // Inject Context (Snippets/Corrections)
+      String contextLines = "";
       final corrections = relevantTerms.where((t) => t.isCorrection).toList();
       final vocabulary = relevantTerms.where((t) => !t.isCorrection).toList();
 
-      if (corrections.isNotEmpty) {
-        contextInstructions += "Corrections:\n";
+      if (corrections.isNotEmpty || vocabulary.isNotEmpty || relevantSnippets.isNotEmpty) {
         for (var term in corrections) {
-          contextInstructions += "- Replace '${term.original}' with '${term.replacement}'\n";
+          contextLines += "Replace '${term.original}' with '${term.replacement}'. ";
+        }
+        for (var term in vocabulary) {
+          contextLines += "Use term '${term.replacement}'. ";
+        }
+        for (var snippet in relevantSnippets) {
+          contextLines += "Expand '${snippet.shortcut}' to '${snippet.content}'. ";
         }
       }
       
-      if (vocabulary.isNotEmpty) {
-        contextInstructions += "Vocabulary (Jargon):\n";
-        for (var term in vocabulary) {
-          contextInstructions += "- Use term: '${term.replacement}'\n";
-        }
-      }
-      if (relevantSnippets.isNotEmpty) {
-        contextInstructions += "Snippets:\n";
-        for (var snippet in relevantSnippets) {
-          contextInstructions += "- ${snippet.shortcut} -> ${snippet.content}\n";
-        }
+      if (contextLines.isNotEmpty) {
+        userContent += '\nContext: ${contextLines.trim()}';
       }
 
-      if (contextInstructions.isNotEmpty) {
-        userContent = "Instructions:\n$contextInstructions\n$userContent";
+      // Inject Style
+      if (styleInstruction.isNotEmpty) {
+        userContent += '\nStyle: $styleInstruction';
       }
 
-      final fullPrompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n$systemInstruction<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n$userContent<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
+      userContent += '\nOutput:';
+
+      String fullPrompt;
+      
+      if (modelName.contains("Gemma")) {
+        // Gemma Template: <start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n
+        fullPrompt = "<start_of_turn>user\n$systemInstruction\n\n$userContent<end_of_turn>\n<start_of_turn>model\n";
+      } else if (modelName.contains("Qwen")) {
+        // ChatML Template: <|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n
+        fullPrompt = "<|im_start|>system\n$systemInstruction<|im_end|>\n<|im_start|>user\n$userContent<|im_end|>\n<|im_start|>assistant\n";
+      } else {
+        // Llama 3 Template (Default)
+        fullPrompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n$systemInstruction<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n$userContent<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
+      }
 
       debugPrint("LocalLLMService: Sending prompt to FRESH Context $_contextId...");
       final response = await Fllama.instance()!.completion(
@@ -189,6 +225,8 @@ class LocalLLMService {
           .replaceAll(RegExp(r'<\|begin_of_text\|>'), '')
           .replaceAll(RegExp(r'<\|eot_id\|>'), '')
           .replaceAll(RegExp(r'<\|start_header_id\|>.*?<\|end_header_id\|>'), '')
+          .replaceAll(RegExp(r'<\|im_end\|>'), '') // Fix for Qwen
+          .replaceAll(RegExp(r'<\|im_start\|>'), '') // Fix for Qwen
           .replaceAll(RegExp(r'<end_of_turn>'), '') // Legacy cleanup
           .replaceAll(RegExp(r'<eos>'), '') // Legacy cleanup
           .replaceAll(RegExp(r'</s>'), '') // Legacy cleanup

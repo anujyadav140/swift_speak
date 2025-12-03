@@ -199,6 +199,17 @@ public class SwiftSpeakIMEService extends InputMethodService {
         };
         String sortOrder = android.provider.MediaStore.Images.Media.DATE_ADDED + " DESC";
 
+        // Check permissions
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            int permission = checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES);
+            android.util.Log.d("SwiftSpeakIME", "READ_MEDIA_IMAGES permission: "
+                    + (permission == android.content.pm.PackageManager.PERMISSION_GRANTED ? "GRANTED" : "DENIED"));
+        } else {
+            int permission = checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE);
+            android.util.Log.d("SwiftSpeakIME", "READ_EXTERNAL_STORAGE permission: "
+                    + (permission == android.content.pm.PackageManager.PERMISSION_GRANTED ? "GRANTED" : "DENIED"));
+        }
+
         try (android.database.Cursor cursor = getContentResolver().query(
                 android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 projection,
@@ -221,7 +232,8 @@ public class SwiftSpeakIMEService extends InputMethodService {
                             + ", Current: " + currentTime + ", Diff: " + diff);
 
                     // Check if it's a screenshot (by path) and recent (last 5 seconds)
-                    if (diff <= 5 && path.toLowerCase().contains("screenshots")) {
+                    String lowerPath = path.toLowerCase();
+                    if (diff <= 5 && (lowerPath.contains("screenshot") || lowerPath.contains("screen_shot"))) {
                         android.util.Log.d("SwiftSpeakIME", "Screenshot detected! Sending to Flutter.");
                         // Run on UI thread to be safe, though we are likely already on it
                         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {

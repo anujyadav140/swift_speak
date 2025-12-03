@@ -12,7 +12,10 @@ import 'package:swift_speak/features/local_model/local_model_screen.dart';
 import 'package:swift_speak/features/permissions/permissions_screen.dart';
 import 'package:swift_speak/features/home/quick_tips_screen.dart';
 import 'package:swift_speak/features/home/quick_tips_carousel.dart';
+import 'package:swift_speak/features/home/tips_data.dart';
+
 import 'package:swift_speak/services/theme_service.dart';
+import 'package:swift_speak/features/connectors/connectors_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final ThemeService _themeService = ThemeService();
   bool _hasMicPermission = false;
   bool _showQuickTips = false; // Default to false to prevent flash
+  bool _showSetupTip = false;
 
   @override
   void initState() {
@@ -44,14 +48,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+
+
   Future<void> _loadQuickTipsPreference() async {
     final prefs = await SharedPreferences.getInstance();
     final shouldShow = prefs.getBool('showQuickTips') ?? true;
-    if (mounted && shouldShow) {
+    final showSetup = prefs.getBool('showSetupTip') ?? true;
+    if (mounted) {
       setState(() {
-        _showQuickTips = true;
+        _showQuickTips = shouldShow;
+        _showSetupTip = showSetup;
       });
     }
+  }
+
+  Future<void> _saveSetupTipPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('showSetupTip', false);
   }
 
   @override
@@ -108,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Colors.grey,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 24,
                   ),
             ),
             const SizedBox(height: 20),
@@ -116,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // Quick Tips Carousel (Conditional)
             if (_showQuickTips) ...[
               QuickTipsCarousel(
+                tips: TipsData.setupTips,
                 onDismiss: () {
                   setState(() {
                     _showQuickTips = false;
@@ -149,8 +163,17 @@ class _HomeScreenState extends State<HomeScreen> {
               title: "Style",
               subtitle: "Customize your tone",
               icon: Icons.auto_awesome,
-              color: const Color(0xFFEC407A), // Pink
+              color: const Color(0xFF405573), // User specified blue-grey
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StyleScreen())),
+            ),
+            const SizedBox(height: 16),
+            _buildFeatureCard(
+              context,
+              title: "Connectors",
+              subtitle: "Integrate with other apps",
+              icon: Icons.hub,
+              color: const Color(0xFF6D5580), // User specified purple
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConnectorsScreen())),
             ),
           ],
         ),
@@ -170,10 +193,10 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.graphic_eq,
-                  size: 48,
-                  color: Colors.white,
+                Image.asset(
+                  'assets/images/logo.png',
+                  height: 80, // Adjust height as needed
+                  width: 80,
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -238,9 +261,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color: isDark ? Colors.black : color,
+          color: color, // Always use the assigned color
           borderRadius: BorderRadius.circular(20),
-          border: isDark ? Border.all(color: color, width: 1) : null,
+          // No border needed as colors are distinct
         ),
         padding: const EdgeInsets.all(20),
         child: Row(
@@ -248,12 +271,12 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: isDark ? color.withOpacity(0.2) : Colors.white.withOpacity(0.2),
+                color: Colors.white.withOpacity(0.2), // Consistent semi-transparent white
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 icon, 
-                color: isDark ? color : Colors.white, 
+                color: Colors.white, // Always white icon
                 size: 28,
               ),
             ),
@@ -264,25 +287,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.white,
+                    style: const TextStyle(
+                      color: Colors.white, // Always white text
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: isDark ? Colors.grey : Colors.white70,
+                    style: const TextStyle(
+                      color: Colors.white70, // Always white70 subtitle
                       fontSize: 14,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(
+            const Icon(
               Icons.arrow_forward_ios, 
-              color: isDark ? Colors.grey : Colors.white54, 
+              color: Colors.white54, // Always white54 arrow
               size: 16,
             ),
           ],
