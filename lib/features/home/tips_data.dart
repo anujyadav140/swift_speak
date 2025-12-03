@@ -24,9 +24,9 @@ class TipsData {
     },
     {
       "title": "Step 5: Switch Keyboard",
-      "description": "Tap 🌐 icon below the Gboard to switch to Swift Speak",
+      "description": "Tap the icon below the Gboard to switch to Swift Speak",
       "icon": Icons.language,
-      "image": "assets/images/globe_instruction.png",
+      "icons": [Icons.language, Icons.keyboard],
     },
   ];
 

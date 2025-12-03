@@ -118,11 +118,38 @@ class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
                                   fit: BoxFit.contain,
                                 ),
                               )
-                            : Icon(
-                                tip["icon"] as IconData,
-                                size: iconSize,
-                                color: Colors.white24,
-                                ),
+                            : tip.containsKey("icons")
+                                ? Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        (tip["icons"] as List<IconData>)[0],
+                                        size: iconSize,
+                                        color: Colors.white24,
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                        child: Text(
+                                          "/",
+                                          style: TextStyle(
+                                            fontSize: iconSize,
+                                            color: Colors.white24,
+                                            fontWeight: FontWeight.w300,
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        (tip["icons"] as List<IconData>)[1],
+                                        size: iconSize,
+                                        color: Colors.white24,
+                                      ),
+                                    ],
+                                  )
+                                : Icon(
+                                    tip["icon"] as IconData,
+                                    size: iconSize,
+                                    color: Colors.white24,
+                                  ),
                       ),
                     ),
                   ],
