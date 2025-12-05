@@ -16,6 +16,7 @@ import 'package:swift_speak/features/home/tips_data.dart';
 
 import 'package:swift_speak/services/theme_service.dart';
 import 'package:swift_speak/features/connectors/connectors_screen.dart';
+import 'package:swift_speak/features/languages/languages_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -174,6 +175,15 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icons.hub,
               color: const Color(0xFF6D5580), // User specified purple
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConnectorsScreen())),
+            ),
+            const SizedBox(height: 16),
+            _buildFeatureCard(
+              context,
+              title: "Languages",
+              subtitle: "Select speech language",
+              icon: Icons.language,
+              color: const Color(0xFF5C6BC0), // Indigo
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LanguagesScreen())),
             ),
           ],
         ),

@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/speech_service.dart';
+import '../../services/language_service.dart';
 import '../../services/gemini_service.dart';
 import '../../services/dictionary_service.dart';
 import '../../services/snippet_service.dart';
@@ -380,10 +381,14 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
       debugPrint("Applying style: $styleInstruction");
     }
 
-    // Check selected model
+    // Check selected model and language
     final prefs = await SharedPreferences.getInstance();
     final selectedModel = prefs.getString('selected_model') ?? 'Gemini 2.0 Flash Lite';
     
+    // Fetch selected language for transliteration context
+    final languageService = LanguageService();
+    final selectedLanguageCode = await languageService.getSelectedLanguageCode();
+
     String formattedText;
 
     if (selectedModel != 'Gemini 2.0 Flash Lite') {
@@ -403,7 +408,7 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
           userTerms: _userTerms,
           snippets: _snippets,
           styleInstruction: styleInstruction,
-          modelName: selectedModel, // Pass model name for template selection
+          modelName: selectedModel, 
         );
       } catch (e) {
         debugPrint("Local Model Error: $e. Falling back to Cloud.");
@@ -411,7 +416,8 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
           fullText, 
           userTerms: _userTerms, 
           snippets: _snippets,
-          styleInstruction: styleInstruction
+          styleInstruction: styleInstruction,
+          targetLanguageCode: selectedLanguageCode,
         );
       }
     } else {
@@ -420,7 +426,8 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
         fullText, 
         userTerms: _userTerms, 
         snippets: _snippets,
-        styleInstruction: styleInstruction
+        styleInstruction: styleInstruction,
+        targetLanguageCode: selectedLanguageCode,
       );
     }
 

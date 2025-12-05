@@ -240,7 +240,8 @@ class GeminiService {
   Future<String> formatText(String text, {
     List<DictionaryTerm> userTerms = const [], 
     List<Snippet> snippets = const [],
-    String styleInstruction = ""
+    String styleInstruction = "",
+    String? targetLanguageCode,
   }) async {
     if (text.trim().isEmpty) return text;
 
@@ -270,10 +271,21 @@ class GeminiService {
     if (styleInstruction.isNotEmpty) {
       contextPrompt += "$styleInstruction\n\n";
     }
+    
+    // 3. Transliteration Instruction (for Hinglish)
+    String systemInstructionOverride = "";
+    if (targetLanguageCode == 'hi-Latn') {
+      systemInstructionOverride = 
+        "CRITICAL: The input text is likely in Hindi (Devanagari script). "
+        "Your PRIMARY task is to TRANSLITERATE it into Hinglish (Hindi words written in English/Latin script). "
+        "Do NOT translate the meaning into English. Preserve the Hindi words exactly but write them in Roman characters. "
+        "Example: 'मेरा नाम' -> 'Mera naam'.\n";
+    }
 
-    // 3. Construct the final prompt
+    // 4. Construct the final prompt
     final prompt = [
       Content.text(
+        '$systemInstructionOverride'
         '$contextPrompt'
         'Input: "$text"',
       )

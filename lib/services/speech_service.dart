@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:swift_speak/services/language_service.dart';
 
 class SpeechService {
   final SpeechToText _speechToText = SpeechToText();
@@ -48,9 +49,14 @@ class SpeechService {
     try {
       _onStatusController.add('listening');
       
+      final languageService = LanguageService();
+      final selectedCode = await languageService.getSelectedLanguageCode();
+      final sttCode = languageService.getSTTCode(selectedCode);
+      
       await _speechToText.listen(
         onResult: (result) => _onResultController.add(result),
         onSoundLevelChange: (level) => _onSoundLevelController.add(level),
+        localeId: sttCode,
       );
     } catch (e) {
       debugPrint("SpeechService: Start Error: $e");
