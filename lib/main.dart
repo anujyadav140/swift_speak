@@ -8,6 +8,7 @@ import 'package:swift_speak/features/auth/login_screen.dart';
 import 'package:swift_speak/features/home/home_screen.dart';
 import 'package:swift_speak/features/overlay/overlay_toolbar.dart';
 import 'package:swift_speak/features/permissions/permissions_screen.dart';
+import 'package:swift_speak/services/subscription_service.dart';
 import 'features/ime/keyboard_page.dart';
 import 'firebase_options.dart';
 import 'services/theme_service.dart';
@@ -30,6 +31,8 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    // Initialize Subscription Service (RevenueCat)
+    await SubscriptionService().init();
   } catch (e) {
     debugPrint("Firebase initialization failed: $e");
   }

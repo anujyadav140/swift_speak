@@ -11,7 +11,7 @@ plugins {
 android {
     namespace = "com.example.swift_speak"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "28.0.12433566"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

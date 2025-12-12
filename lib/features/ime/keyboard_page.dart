@@ -14,6 +14,7 @@ import '../../services/style_service.dart';
 import '../../services/local_llm_service.dart';
 import '../../services/calendar_service.dart';
 import '../../services/stats_service.dart';
+import '../../services/subscription_service.dart';
 import '../../models/snippet.dart';
 import '../../widgets/border_beam_painter.dart';
 import '../../services/screenshot_service.dart';
@@ -170,9 +171,11 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
     } catch (e) {
       debugPrint("Screenshot Analysis Error: $e");
       if (mounted) {
+        bool isQuota = e is QuotaExceededException;
         setState(() {
           _isAnalyzingScreenshot = false;
-          _status = "ERROR";
+          _status = isQuota ? "LIMIT REACHED" : "ERROR";
+          if (isQuota) _screenshotResult = AnalysisResult(text: "Weekly limit reached. Upgrade to Pro.");
         });
       }
     }
@@ -422,13 +425,22 @@ class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMix
       }
     } else {
       debugPrint("KeyboardPage: Using Cloud Model: Gemini 2.0 Flash Lite (Selected: $selectedModel)");
-      formattedText = await _geminiService.formatText(
-        fullText, 
-        userTerms: _userTerms, 
-        snippets: _snippets,
-        styleInstruction: styleInstruction,
-        targetLanguageCode: selectedLanguageCode,
-      );
+      try {
+        formattedText = await _geminiService.formatText(
+          fullText, 
+          userTerms: _userTerms, 
+          snippets: _snippets,
+          styleInstruction: styleInstruction,
+          targetLanguageCode: selectedLanguageCode,
+        );
+      } catch (e) {
+         if (e is QuotaExceededException) {
+            formattedText = "Error: Weekly limit reached.";
+            if (mounted) setState(() => _status = "LIMIT REACHED");
+         } else {
+            formattedText = fullText; // Fallback
+         }
+      }
     }
 
     // 6. Commit

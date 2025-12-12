@@ -15,8 +15,6 @@ class StatsService {
     return _firestore
         .collection('users')
         .doc(user.uid)
-        .collection('stats')
-        .doc('summary')
         .snapshots()
         .map((snapshot) {
       if (snapshot.exists && snapshot.data() != null) {
@@ -33,9 +31,7 @@ class StatsService {
 
     final docRef = _firestore
         .collection('users')
-        .doc(user.uid)
-        .collection('stats')
-        .doc('summary');
+        .doc(user.uid);
 
     await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(docRef);
@@ -79,9 +75,13 @@ class StatsService {
         totalDurationSeconds: currentStats.totalDurationSeconds + duration.inSeconds,
         totalAppsUsed: currentApps.length,
         usedAppPackages: currentApps,
+        // Preserve subscription data
+        subscriptionTier: currentStats.subscriptionTier,
+        tokenUsageCurrentPeriod: currentStats.tokenUsageCurrentPeriod,
+        billingPeriodEnd: currentStats.billingPeriodEnd,
       );
 
-      transaction.set(docRef, updatedStats.toMap());
+      transaction.set(docRef, updatedStats.toMap(), SetOptions(merge: true));
     });
   }
 }

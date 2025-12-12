@@ -1,12 +1,15 @@
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_vertexai/firebase_vertexai.dart';
 import 'package:flutter/foundation.dart';
 import 'calendar_service.dart';
 import 'dictionary_service.dart';
+import 'subscription_service.dart';
 import '../models/snippet.dart';
 
 class GeminiService {
   late final GenerativeModel _model;
+  final SubscriptionService _subscriptionService = SubscriptionService();
 
   GeminiService() {
     // Initialize Gemini 1.5 Flash for speed and cost efficiency
@@ -150,7 +153,19 @@ class GeminiService {
       InlineDataPart('image/png', imageBytes),
     ]);
 
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+       // Images are expensive (~1000-1500 tokens usually)
+       await _subscriptionService.checkUsageLimit(userId, 2000);
+    }
+
     var response = await chat.sendMessage(prompt);
+    
+    // Initial usage tracking
+    if (userId != null && response.usageMetadata != null) {
+       await _subscriptionService.incrementUsage(userId, response.usageMetadata?.totalTokenCount ?? 0);
+    }
+    
     EventProposal? proposedEvent;
 
     // Handle tool calls loop
@@ -201,6 +216,11 @@ class GeminiService {
       
       onStatusUpdate?.call("Finalizing...");
       response = await chat.sendMessage(Content.functionResponses(functionResponses));
+      
+      // Track usage for follow-up response
+      if (userId != null && response.usageMetadata != null) {
+         await _subscriptionService.incrementUsage(userId, response.usageMetadata?.totalTokenCount ?? 0);
+      }
     }
 
     String explanation = "Could not analyze.";
@@ -295,7 +315,23 @@ class GeminiService {
     debugPrint("GeminiService: Input Text: $text");
 
     try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      
+      // Check limits before request (Estimate ~100 tokens overhead + input)
+      if (userId != null) {
+         // Estimate input tokens loosely as chars / 4
+         final estimatedInput = text.length ~/ 4 + 100; 
+         await _subscriptionService.checkUsageLimit(userId, estimatedInput);
+      }
+      
       final response = await _model.generateContent(prompt);
+      
+      // Track actual usage
+      if (userId != null) {
+        final totalTokens = response.usageMetadata?.totalTokenCount ?? 0;
+        await _subscriptionService.incrementUsage(userId, totalTokens);
+      }
+
       debugPrint("GeminiService: Received response: ${response.text}");
       
       String cleanedText = response.text?.trim() ?? text;

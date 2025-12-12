@@ -13,6 +13,7 @@ import 'package:swift_speak/features/permissions/permissions_screen.dart';
 import 'package:swift_speak/features/home/quick_tips_screen.dart';
 import 'package:swift_speak/features/home/quick_tips_carousel.dart';
 import 'package:swift_speak/features/home/tips_data.dart';
+import 'package:swift_speak/features/paywall/paywall_screen.dart';
 
 import 'package:swift_speak/services/theme_service.dart';
 import 'package:swift_speak/features/connectors/connectors_screen.dart';
@@ -241,6 +242,14 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () {
               Navigator.pop(context); // Close drawer
               Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalModelScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.star, color: Colors.amber),
+            title: const Text('Upgrade to Pro'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
             },
           ),
           const Divider(),

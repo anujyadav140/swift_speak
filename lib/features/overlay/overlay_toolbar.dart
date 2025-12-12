@@ -9,6 +9,7 @@ import 'package:speech_to_text/speech_recognition_result.dart';
 import '../../services/speech_service.dart';
 import '../../services/gemini_service.dart';
 import '../../services/snippet_service.dart';
+import '../../services/subscription_service.dart';
 import '../../models/snippet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/local_llm_service.dart';
@@ -129,9 +130,10 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
       }
     } catch (e) {
       if (mounted) {
+        bool isQuota = e is QuotaExceededException;
         setState(() {
           _isAnalyzingScreenshot = false;
-          _screenshotResult = "Error: $e";
+          _screenshotResult = isQuota ? "Weekly limit reached. Upgrade to Pro." : "Error: $e";
         });
       }
     }
@@ -338,11 +340,20 @@ class _OverlayToolbarState extends State<OverlayToolbar> with TickerProviderStat
       } else {
         print("OverlayToolbar: Using Cloud Model: Gemini 2.0 Flash Lite (Selected: $selectedModel)");
         // Use GeminiService
-        correctedText = await _geminiService.formatText(
-          rawText, 
-          snippets: _snippets, 
-          userTerms: _userTerms,
-        );
+        try {
+          correctedText = await _geminiService.formatText(
+            rawText, 
+            snippets: _snippets, 
+            userTerms: _userTerms,
+          );
+        } catch (e) {
+          if (e is QuotaExceededException) {
+             debugPrint("Quota exceeded");
+             _injectText("Error: Weekly limit reached."); 
+             return;
+          }
+          rethrow;
+        }
       }
       
       debugPrint("AI Corrected: $correctedText");
