@@ -6,7 +6,6 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:swift_speak/features/auth/login_screen.dart';
 import 'package:swift_speak/features/home/home_screen.dart';
-import 'package:swift_speak/features/overlay/overlay_toolbar.dart';
 import 'package:swift_speak/features/permissions/permissions_screen.dart';
 import 'package:swift_speak/services/subscription_service.dart';
 import 'features/ime/keyboard_page.dart';
@@ -31,33 +30,13 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    // Initialize Subscription Service (RevenueCat)
+    // Initialize Subscription Service
+
     await SubscriptionService().init();
   } catch (e) {
     debugPrint("Firebase initialization failed: $e");
   }
   runApp(const MyApp());
-}
-
-// overlay entry point
-@pragma("vm:entry-point")
-void overlayMain() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  debugPrint("Starting Overlay Entry Point");
-  
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    debugPrint("Firebase initialized in Overlay");
-  } catch (e) {
-    debugPrint("Firebase init failed in Overlay: $e");
-  }
-
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: OverlayToolbar(),
-  ));
 }
 
 class MyApp extends StatefulWidget {
@@ -133,7 +112,7 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  static const _channel = MethodChannel('com.example.swift_speak/app');
+  static const _channel = MethodChannel('com.anujsyadav.swiftspeak/app');
 
   @override
   void initState() {

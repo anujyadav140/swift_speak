@@ -1,47 +1,119 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import '../models/user_stats.dart';
 
 class SubscriptionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final InAppPurchase _inAppPurchase = InAppPurchase.instance;
 
   // Singleton instance
   static final SubscriptionService _instance = SubscriptionService._internal();
   factory SubscriptionService() => _instance;
   SubscriptionService._internal();
 
-  /// Initialize RevenueCat securely by fetching config from Cloud Functions
+  // Observable for subscription status
+  final StreamController<bool> _isProController = StreamController<bool>.broadcast();
+  Stream<bool> get isProStream => _isProController.stream;
+
+  Set<String> _productIds = {'pro_monthly'}; // Define your product ID here
+
+  /// Initialize IAP
   Future<void> init() async {
-    await Purchases.setLogLevel(LogLevel.debug);
-
-    try {
-      // Fetch secure config
-      final result = await _functions.httpsCallable('getSubscriptionConfig').call();
-      final data = result.data as Map<dynamic, dynamic>;
-      
-      String? apiKey;
-      if (defaultTargetPlatform == TargetPlatform.android) {
-         apiKey = data['revenueCatApiKeyAndroid'] as String?;
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-         apiKey = data['revenueCatApiKeyIos'] as String?;
-      }
-
-      if (apiKey != null) {
-        await Purchases.configure(PurchasesConfiguration(apiKey));
-        
-        // Listen for subscription changes
-        Purchases.addCustomerInfoUpdateListener((customerInfo) {
-          _handleCustomerInfo(customerInfo);
-        });
-      }
-    } catch (e) {
-      debugPrint("Failed to initialize SubscriptionService: $e");
-      // Fallback or disable premium features gracefully
+    final bool available = await _inAppPurchase.isAvailable();
+    if (!available) {
+      debugPrint("IAP not available");
+      return;
     }
+
+    // Listen to purchase updates
+    final Stream<List<PurchaseDetails>> purchaseUpdated = _inAppPurchase.purchaseStream;
+    purchaseUpdated.listen((List<PurchaseDetails> purchaseDetailsList) {
+      _listenToPurchaseUpdated(purchaseDetailsList);
+    }, onDone: () {
+      debugPrint("IAP Stream Done");
+    }, onError: (error) {
+      debugPrint("IAP Stream Error: $error");
+    });
+  }
+
+  Future<void> _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
+    for (final PurchaseDetails purchaseDetails in purchaseDetailsList) {
+      if (purchaseDetails.status == PurchaseStatus.pending) {
+        // UI can show a spinner
+      } else {
+        if (purchaseDetails.status == PurchaseStatus.error) {
+          debugPrint("Purchase Error: ${purchaseDetails.error}");
+          // Handle error UI if needed
+        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
+                   purchaseDetails.status == PurchaseStatus.restored) {
+          
+          await _verifyPurchase(purchaseDetails); // Verify and Deliver content
+        }
+        
+        if (purchaseDetails.pendingCompletePurchase) {
+          await _inAppPurchase.completePurchase(purchaseDetails);
+        }
+      }
+    }
+  }
+
+  Future<void> _verifyPurchase(PurchaseDetails purchaseDetails) async {
+    // In a real app, verify the token server-side with Google Play Developer API
+    // For now, we trust the successful callback and update Firestore
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // Logic to check if it's the specific 'pro_monthly' product
+      if (purchaseDetails.productID == 'pro_monthly') {
+          await _setProStatus(user.uid, true);
+      }
+    }
+  }
+
+  Future<void> _setProStatus(String userId, bool isPro) async {
+      await _firestore.collection('users').doc(userId).set({
+        'subscriptionTier': isPro ? 'PRO' : 'FREE',
+      }, SetOptions(merge: true));
+      
+      _isProController.add(isPro);
+  }
+
+
+  /// Purchase PRO subscription
+  Future<void> purchasePro() async {
+    final bool available = await _inAppPurchase.isAvailable();
+    if (!available) {
+        throw Exception("Store not available");
+    }
+
+    final ProductDetailsResponse response = await _inAppPurchase.queryProductDetails(_productIds);
+    if (response.notFoundIDs.isNotEmpty) {
+      debugPrint("Products not found: ${response.notFoundIDs}");
+      // Assuming 'pro_monthly' might not be set up in the store yet, 
+      // but we proceed with the code logic. 
+    }
+    
+    if (response.productDetails.isEmpty) {
+        debugPrint("No product details found.");
+        throw Exception("Product not found");
+    }
+
+    final ProductDetails productDetails = response.productDetails.first; // Assuming only one pro product
+    
+    final PurchaseParam purchaseParam = PurchaseParam(productDetails: productDetails);
+    
+    // For subscription on Android/iOS
+    _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+  }
+  
+  /// Restore purchases
+  Future<void> restorePurchases() async {
+    await _inAppPurchase.restorePurchases();
   }
 
   /// Checks if the user can perform an action costing [tokens].
@@ -50,17 +122,16 @@ class SubscriptionService {
     final docRef = _firestore.collection('users').doc(userId);
     final snapshot = await docRef.get();
 
-    if (!snapshot.exists) return; // Assume new user is fine or handle separately
+    if (!snapshot.exists) return; 
 
     UserStats userStats = UserStats.fromMap(snapshot.data()!);
 
     // 1. Check if user is PRO
     if (userStats.isPro) return;
 
-    // 2. Check Reset Period (Client side check for UI speed, validated eventually by server reset)
+    // 2. Check Reset Period 
     final now = DateTime.now();
     if (userStats.billingPeriodEnd == null || now.isAfter(userStats.billingPeriodEnd!)) {
-      // Trigger reset logic (ideally this is also server-side, but keeping client trigger for now)
       await _resetUsage(userId);
       return; 
     }
@@ -79,8 +150,6 @@ class SubscriptionService {
       });
     } catch (e) {
       debugPrint("Failed to log usage: $e");
-      // Fallback: Optimistic local update via Firestore directly if function fails?
-      // For now, fail silently or fallback to direct write if critically needed.
     }
   }
 
@@ -92,48 +161,6 @@ class SubscriptionService {
       'tokenUsageCurrentPeriod': 0,
       'billingPeriodEnd': Timestamp.fromDate(nextWeek),
     }, SetOptions(merge: true));
-  }
-
-  /// Purchase PRO subscription
-  Future<void> purchasePro() async {
-    try {
-      Offerings offerings = await Purchases.getOfferings();
-      if (offerings.current != null && offerings.current!.availablePackages.isNotEmpty) {
-        // Purchase the first available package in the current offering
-        final package = offerings.current!.availablePackages.first;
-        await Purchases.purchasePackage(package);
-        // Listener dealing with update automatically
-      } else {
-        debugPrint("No offerings available");
-      }
-    } catch (e) {
-      debugPrint("Purchase failed: $e");
-      rethrow;
-    }
-  }
-  
-  /// Restore purchases
-  Future<void> restorePurchases() async {
-    try {
-      CustomerInfo customerInfo = await Purchases.restorePurchases();
-      await _handleCustomerInfo(customerInfo);
-    } catch (e) {
-       debugPrint("Restore failed: $e");
-    }
-  }
-
-  Future<void> _handleCustomerInfo(CustomerInfo customerInfo) async {
-     // Check if entitlement is active
-     final isPro = customerInfo.entitlements.all["pro"]?.isActive ?? false;
-     debugPrint("Subscription Updated. isPro: $isPro");
-
-     final user = FirebaseAuth.instance.currentUser;
-     if (user != null) {
-        // Update Firestore
-        await _firestore.collection('users').doc(user.uid).set({
-          'subscriptionTier': isPro ? 'PRO' : 'FREE',
-        }, SetOptions(merge: true));
-     }
   }
 }
 

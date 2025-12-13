@@ -39,8 +39,6 @@ dependencies:
   google_sign_in: ^6.2.1
   cloud_firestore: ^5.0.0
   shared_preferences: ^2.2.2
-  flutter_overlay_window:
-    path: ./packages/flutter_overlay_window
   google_generative_ai: ^0.4.7
   record: ^6.1.2
   speech_to_text: ^7.0.0
@@ -57,8 +55,7 @@ dependencies:
   googleapis: ^15.0.0
   extension_google_sign_in_as_googleapis_auth: ^2.0.13
   country_flags: ^4.1.0
-  purchases_flutter: ^9.10.0
-  purchases_ui_flutter: ^9.10.0
+  in_app_purchase: ^3.0.0
   cloud_functions: ^5.6.2
 
 dev_dependencies:

@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
 class ScreenshotService {
-  static const MethodChannel _channel = MethodChannel('com.example.swift_speak/screenshot');
+  static const MethodChannel _channel = MethodChannel('com.anujsyadav.swiftspeak/screenshot');
   
   // Callback for when a screenshot is detected
   Function(String path)? onScreenshotDetected;

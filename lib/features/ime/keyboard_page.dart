@@ -28,7 +28,7 @@ class KeyboardPage extends StatefulWidget {
 }
 
 class _KeyboardPageState extends State<KeyboardPage> with TickerProviderStateMixin, WidgetsBindingObserver {
-  static const _channel = MethodChannel('com.example.swift_speak/ime');
+  static const _channel = MethodChannel('com.anujsyadav.swiftspeak/ime');
   final SpeechService _speechService = SpeechService();
   final GeminiService _geminiService = GeminiService();
   final DictionaryService _dictionaryService = DictionaryService();

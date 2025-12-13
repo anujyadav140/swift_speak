@@ -6,7 +6,7 @@
     android:orientation="vertical"
     android:gravity="center">
 
-    <com.example.swift_speak.WaveformView
+    <com.anujsyadav.swiftspeak.WaveformView
         android:id="@+id/waveform_view"
         android:layout_width="match_parent"
         android:layout_height="60dp"

@@ -13,7 +13,10 @@ import 'package:swift_speak/features/permissions/permissions_screen.dart';
 import 'package:swift_speak/features/home/quick_tips_screen.dart';
 import 'package:swift_speak/features/home/quick_tips_carousel.dart';
 import 'package:swift_speak/features/home/tips_data.dart';
+
 import 'package:swift_speak/features/paywall/paywall_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:swift_speak/models/user_stats.dart';
 
 import 'package:swift_speak/services/theme_service.dart';
 import 'package:swift_speak/features/connectors/connectors_screen.dart';
@@ -140,6 +143,96 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 24),
             ],
+
+            // Usage / Pro Card
+            if (user != null)
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox.shrink();
+                  
+                  final stats = UserStats.fromMap(snapshot.data!.data() as Map<String, dynamic>);
+                  if (stats.isPro) return const SizedBox.shrink(); // Don't show if already pro (or maybe show "Pro Active"?)
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 24),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      // Monochrome background or subtle grey to be minimalistic
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isDark ? Colors.white24 : Colors.black12,
+                      ),
+                      boxShadow: [
+                         if (!isDark)
+                           BoxShadow(
+                             color: Colors.black.withOpacity(0.05),
+                             blurRadius: 10,
+                             offset: const Offset(0, 4),
+                           ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "Weekly Usage",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                            Text(
+                              "${(stats.usagePercentage * 100).toInt()}%",
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: stats.usagePercentage,
+                            // Background track color
+                            backgroundColor: isDark ? Colors.white10 : Colors.black12,
+                            // Active bar color: White in dark mode, Black in light mode
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              stats.isAtLimit 
+                                  ? Colors.redAccent 
+                                  : (isDark ? Colors.white : Colors.black),
+                            ),
+                            minHeight: 8,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark ? Colors.white : Colors.black,
+                              foregroundColor: isDark ? Colors.black : Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text("Upgrade to Pro"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
             
             // Feature Cards List
             _buildFeatureCard(
