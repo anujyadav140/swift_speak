@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
 import '../../services/calendar_service.dart';
 
 class PermissionsScreen extends StatefulWidget {
@@ -14,6 +17,8 @@ class PermissionsScreen extends StatefulWidget {
 class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindingObserver {
   PermissionStatus _micStatus = PermissionStatus.denied;
   PermissionStatus _storageStatus = PermissionStatus.denied;
+  bool _isKeyboardEnabled = false;
+  static const platform = MethodChannel('com.anujsyadav.swiftspeak/settings');
   GoogleSignInAccount? _calendarUser;
   final CalendarService _calendarService = CalendarService();
 
@@ -30,11 +35,29 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
 
   // ... existing dispose ...
 
-  // ... existing didChangeAppLifecycleState ...
+  // ... existing dispose ...
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+    }
+  }
 
   Future<void> _checkPermissions() async {
     final micStatus = await Permission.microphone.status;
     
+    // Check keyboard status via MethodChannel
+    bool keyboardEnabled = false;
+    try {
+      if (Theme.of(context).platform == TargetPlatform.android) {
+        final bool result = await platform.invokeMethod('checkImeEnabled');
+        keyboardEnabled = result;
+      }
+    } catch (e) {
+      debugPrint("Failed to check keyboard status: $e");
+    }
+
     // Check storage/photos status
     // Prioritize photos for Android 13+
     PermissionStatus storageStatus = await Permission.photos.status;
@@ -58,6 +81,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
       setState(() {
         _micStatus = micStatus;
         _storageStatus = storageStatus;
+        _isKeyboardEnabled = keyboardEnabled;
       });
     }
   }
@@ -145,6 +169,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
             onTap: _handleMicPermission,
             textColor: textColor,
             isDark: isDark,
+          ),
+          _buildKeyboardItem(
+            context,
+            textColor: textColor,
+            isDark: isDark,
+            isEnabled: _isKeyboardEnabled,
           ),
           _buildPermissionItem(
             title: "Screenshot Access",
@@ -329,6 +359,85 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
               const Icon(Icons.warning_amber, color: Colors.orange, size: 24)
             else
               const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKeyboardItem(
+    BuildContext context, {
+    required Color textColor,
+    required bool isDark,
+    required bool isEnabled,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        onTap: () async {
+          if (Theme.of(context).platform == TargetPlatform.android) {
+            const intent = AndroidIntent(
+              action: 'android.settings.INPUT_METHOD_SETTINGS',
+            );
+            await intent.launch();
+            // The status will update automatically via didChangeAppLifecycleState when returning
+          }
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.keyboard, color: textColor, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "On-screen Keyboard",
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    "Required to use Swift Speak.",
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (!isEnabled) ...[
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Tap to Open Settings",
+                      style: TextStyle(
+                        color: Colors.blue, 
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+             if (isEnabled)
+               const Icon(Icons.check, color: Colors.green, size: 24)
+             else
+               const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
           ],
         ),
       ),

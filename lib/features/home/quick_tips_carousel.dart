@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'tips_data.dart';
 
 class QuickTipsCarousel extends StatefulWidget {
   final bool showDismissButton;
@@ -44,7 +45,7 @@ class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
     final double iconSize = screenWidth * 0.15; // Increased from 0.12
 
     return Container(
-      height: 220,
+      height: 200, // Increased height
       decoration: BoxDecoration(
         color: const Color(0xFF263238),
         borderRadius: BorderRadius.circular(20),
@@ -69,89 +70,59 @@ class _QuickTipsCarouselState extends State<QuickTipsCarousel> {
             itemBuilder: (context, index) {
               final tip = widget.tips[index];
               return Padding(
-                padding: EdgeInsets.fromLTRB(24, 24, 24, widget.tips.length > 1 ? 50 : 24), // Increased bottom padding for dots/icon only if needed
-                child: Stack(
+                padding: const EdgeInsets.all(20), // Reduced padding
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          tip["title"] as String,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: titleSize,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.left,
-                        ),
-                        const SizedBox(height: 12),
-                        Expanded(
-                          child: Text(
-                            tip["description"] as String,
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: descSize,
-                              height: 1.3,
-                            ),
-                            textAlign: TextAlign.left,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Icon or Image aligned above dots
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: tip.containsKey("image")
-                            ? Padding(
-                                padding: EdgeInsets.only(
-                                  top: tip["title"] == "Step 5: Switch Keyboard" ? 70 : 40,
-                                ),
-                                child: Image.asset(
-                                  tip["image"] as String,
-                                  height: screenWidth * 0.21,
-                                  fit: BoxFit.contain,
-                                ),
-                              )
-                            : tip.containsKey("icons")
-                                ? Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        (tip["icons"] as List<IconData>)[0],
-                                        size: iconSize,
-                                        color: Colors.white24,
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                                        child: Text(
-                                          "/",
-                                          style: TextStyle(
-                                            fontSize: iconSize,
-                                            color: Colors.white24,
-                                            fontWeight: FontWeight.w300,
-                                          ),
-                                        ),
-                                      ),
-                                      Icon(
-                                        (tip["icons"] as List<IconData>)[1],
-                                        size: iconSize,
-                                        color: Colors.white24,
-                                      ),
-                                    ],
-                                  )
-                                : Icon(
-                                    tip["icon"] as IconData,
-                                    size: iconSize,
-                                    color: Colors.white24,
-                                  ),
+                    Text(
+                      tip["title"] as String,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: titleSize,
+                        fontWeight: FontWeight.bold,
                       ),
+                      textAlign: TextAlign.left,
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      tip["description"] as String,
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: descSize,
+                        height: 1.3,
+                      ),
+                      textAlign: TextAlign.left,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (tip["showSettingsButton"] == true) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 36,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            if (Theme.of(context).platform == TargetPlatform.android) {
+                              const intent = AndroidIntent(
+                                action: 'android.settings.INPUT_METHOD_SETTINGS',
+                              );
+                              await intent.launch();
+                            }
+                          },
+                          icon: const Icon(Icons.settings, size: 18),
+                          label: const Text("Open Settings"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.15),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               );

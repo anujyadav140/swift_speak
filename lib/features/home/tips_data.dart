@@ -3,30 +3,9 @@ import 'package:flutter/material.dart';
 class TipsData {
   static const List<Map<String, dynamic>> setupTips = [
     {
-      "title": "Step 1: Settings",
-      "description": "Go to Settings > System",
-      "icon": Icons.settings,
-    },
-    {
-      "title": "Step 2: Manage Keyboards",
-      "description": "Tap 'Keyboard' > 'On-screen keyboard'",
-      "icon": Icons.keyboard,
-    },
-    {
-      "title": "Step 3: Enable Swift Speak",
-      "description": "Toggle 'Swift Speak' ON",
-      "icon": Icons.toggle_on,
-    },
-    {
-      "title": "Step 4: Trust",
-      "description": "Tap 'OK' to trust the keyboard",
-      "icon": Icons.check_circle,
-    },
-    {
-      "title": "Step 5: Switch Keyboard",
-      "description": "Tap the icon below the Gboard to switch to Swift Speak",
-      "icon": Icons.language,
-      "icons": [Icons.language, Icons.keyboard],
+      "title": "Enable Swift Speak",
+      "description": "Tap 'Open Settings' below, then toggle 'Swift Speak' ON to start using the keyboard.",
+      "showSettingsButton": true,
     },
   ];
 

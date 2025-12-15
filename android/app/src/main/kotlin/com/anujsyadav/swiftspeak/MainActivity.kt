@@ -61,6 +61,17 @@ class MainActivity : FlutterActivity() {
                 val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
                 result.success(null)
+            } else if (call.method == "checkImeEnabled") {
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                val list = imm.enabledInputMethodList
+                var isEnabled = false
+                for (info in list) {
+                    if (info.id.contains("SwiftSpeakIMEService")) {
+                        isEnabled = true
+                        break
+                    }
+                }
+                result.success(isEnabled)
             } else {
                 result.notImplemented()
             }

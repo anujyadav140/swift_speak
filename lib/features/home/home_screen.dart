@@ -11,7 +11,6 @@ import 'package:swift_speak/features/snippets/snippets_screen.dart';
 import 'package:swift_speak/features/local_model/local_model_screen.dart';
 import 'package:swift_speak/features/permissions/permissions_screen.dart';
 import 'package:swift_speak/features/home/quick_tips_screen.dart';
-import 'package:swift_speak/features/home/quick_tips_carousel.dart';
 import 'package:swift_speak/features/home/tips_data.dart';
 
 import 'package:swift_speak/features/paywall/paywall_screen.dart';
@@ -32,14 +31,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final ThemeService _themeService = ThemeService();
   bool _hasMicPermission = false;
-  bool _showQuickTips = false; // Default to false to prevent flash
   bool _showSetupTip = false;
 
   @override
   void initState() {
     super.initState();
     _checkMicPermission();
-    _loadQuickTipsPreference();
   }
 
   Future<void> _checkMicPermission() async {
@@ -55,17 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
 
-  Future<void> _loadQuickTipsPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    final shouldShow = prefs.getBool('showQuickTips') ?? true;
-    final showSetup = prefs.getBool('showSetupTip') ?? true;
-    if (mounted) {
-      setState(() {
-        _showQuickTips = shouldShow;
-        _showSetupTip = showSetup;
-      });
-    }
-  }
+
 
   Future<void> _saveSetupTipPreference() async {
     final prefs = await SharedPreferences.getInstance();
@@ -131,18 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
             
-            // Quick Tips Carousel (Conditional)
-            if (_showQuickTips) ...[
-              QuickTipsCarousel(
-                tips: TipsData.setupTips,
-                onDismiss: () {
-                  setState(() {
-                    _showQuickTips = false;
-                  });
-                },
-              ),
-              const SizedBox(height: 24),
-            ],
+            // Quick Tips Carousel removed as per request
+            // Was here: if (_showQuickTips) ...
 
             // Usage / Pro Card
             if (user != null)
